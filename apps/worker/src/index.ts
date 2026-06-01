@@ -22,15 +22,10 @@ import {
   hasAnyOciConfig
 } from "./lib/object-storage";
 import {
-  isDiarizeModel,
-  isHallucinatedText,
   transcribeWithOpenAi,
+  type TranscriptionProviderResult,
   type WhisperSegment
 } from "./lib/whisper";
-import {
-  applyDiarizationToSegments,
-  callDiarizerService
-} from "./lib/diarizer";
 import {
   renderPdfBuffer,
   renderSrtText,
@@ -38,6 +33,18 @@ import {
   type TranscriptArtifactSegment
 } from "./lib/transcript-artifacts";
 import { translateSegments } from "./lib/translation";
+import { isHallucinatedText } from "./lib/transcription/quality-guards";
+import {
+  assertManualSegmentMergeCompatible,
+  resolveOpenAiModelCapability,
+  selectTranscriptionStrategy,
+  type StrategyModels,
+  type TranscriptionStrategy
+} from "./lib/transcription/strategy-selector";
+import { buildChunkPrompt } from "./lib/transcription/prompt-policy";
+import { buildAudioChunkWindows } from "./lib/transcription/chunk-planner";
+import { mergeChunkSegments } from "./lib/transcription/segment-merge";
+import { applyExternalDiarization } from "./lib/transcription/diarization-stage";
 
 const envCandidates = [
   resolve(process.cwd(), ".env"),
@@ -71,7 +78,9 @@ const envSchema = z.object({
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
   OPENAI_WHISPER_MODEL: z.string().default("whisper-1"),
-  OPENAI_DIARIZE_FALLBACK_MODEL: z.string().default("gpt-4o-transcribe"),
+  OPENAI_TRANSCRIBE_DIRECT_MODEL: z.string().default("gpt-4o-transcribe"),
+  OPENAI_TRANSCRIBE_DIARIZE_MODEL: z.string().default("gpt-4o-transcribe-diarize"),
+  OPENAI_TRANSCRIBE_CHUNKED_MODEL: z.string().default("whisper-1"),
   OPENAI_TRANSLATION_MODEL: z.string().default("gpt-4.1-mini"),
   DIARIZER_URL: z.string().url().optional(),
   DIARIZER_TIMEOUT_MS: z.coerce.number().int().min(5000).max(7200000).default(1800000),
@@ -106,6 +115,21 @@ const openAiApiKey =
     : null;
 const whisperProvider =
   env.WHISPER_PROVIDER === "openai" && !openAiApiKey ? "simulation" : env.WHISPER_PROVIDER;
+const strategyModels: StrategyModels = {
+  directTranscriptModel:
+    env.OPENAI_TRANSCRIBE_DIRECT_MODEL?.trim() ||
+    (env.OPENAI_WHISPER_MODEL === "gpt-4o-transcribe"
+      ? env.OPENAI_WHISPER_MODEL
+      : "gpt-4o-transcribe"),
+  directDiarizeModel:
+    env.OPENAI_TRANSCRIBE_DIARIZE_MODEL?.trim() ||
+    (env.OPENAI_WHISPER_MODEL === "gpt-4o-transcribe-diarize"
+      ? env.OPENAI_WHISPER_MODEL
+      : "gpt-4o-transcribe-diarize"),
+  chunkedTranscriptModel:
+    env.OPENAI_TRANSCRIBE_CHUNKED_MODEL?.trim() ||
+    (env.OPENAI_WHISPER_MODEL === "whisper-1" ? env.OPENAI_WHISPER_MODEL : "whisper-1")
+};
 
 type QueueTaskType = "transcription" | "refresh-original" | "translation";
 
@@ -344,66 +368,11 @@ async function deleteOutputObject(objectKey: string) {
   }
 }
 
-function assignSpeakerLabels(segments: WhisperSegment[], diarizationEnabled: boolean) {
-  if (!diarizationEnabled) {
-    return segments.map((segment, index) => ({
-      segmentIndex: index,
-      startSec: segment.startSec,
-      endSec: segment.endSec,
-      text: segment.text.trim(),
-      speakerLabel: null,
-      speakerConfidence: null,
-      language: "",
-      kind: "speech"
-    }));
-  }
-
-  let currentSpeaker = 1;
-  let nextSpeakerId = 1;
-  let segmentsSinceLastSwitch = 0;
-  return segments.map((segment, index) => {
-    const previous = index > 0 ? segments[index - 1] : null;
-    const previousEnd = previous?.endSec ?? previous?.startSec ?? 0;
-    const currentStart = segment.startSec ?? previousEnd;
-    const gap = currentStart - previousEnd;
-    const normalizedText = segment.text.trim();
-    const endsStrongly = /[.!?]\s*$/.test(previous?.text ?? "");
-
-    if (index > 0) {
-      const shouldIntroduceSpeaker = gap >= 3.2 && segmentsSinceLastSwitch >= 1 && nextSpeakerId < 4;
-      const shouldRotateSpeaker = gap >= 1.8 && endsStrongly && segmentsSinceLastSwitch >= 2;
-
-      if (shouldIntroduceSpeaker) {
-        nextSpeakerId += 1;
-        currentSpeaker = nextSpeakerId;
-        segmentsSinceLastSwitch = 0;
-      } else if (shouldRotateSpeaker && nextSpeakerId > 1) {
-        currentSpeaker = currentSpeaker === nextSpeakerId ? 1 : currentSpeaker + 1;
-        segmentsSinceLastSwitch = 0;
-      }
-    }
-
-    segmentsSinceLastSwitch += 1;
-
-    return {
-      segmentIndex: index,
-      startSec: segment.startSec,
-      endSec: segment.endSec,
-      text: normalizedText,
-      speakerLabel: `Falante ${currentSpeaker}`,
-      speakerConfidence: null,
-      language: "",
-      kind: "speech"
-    };
-  });
-}
-
 function buildOriginalSegments(
   segments: WhisperSegment[],
   fallbackText: string,
   language: string,
-  durationSeconds: number | null,
-  diarizationEnabled: boolean
+  durationSeconds: number | null
 ): ManagedTranscriptSegment[] {
   const normalizedSegments = segments.length > 0
     ? segments
@@ -416,25 +385,15 @@ function buildOriginalSegments(
         }
       ];
 
-  // When the model already returned speaker labels (diarize model), use them directly
-  // instead of running the heuristic speaker assignment.
-  const hasDiarizedLabels = normalizedSegments.some((s) => s.speakerLabel != null);
-  if (hasDiarizedLabels) {
-    return normalizedSegments.map((segment, index) => ({
-      segmentIndex: index,
-      startSec: segment.startSec,
-      endSec: segment.endSec,
-      text: segment.text.trim(),
-      speakerLabel: segment.speakerLabel ?? null,
-      speakerConfidence: null,
-      language,
-      kind: "speech"
-    }));
-  }
-
-  return assignSpeakerLabels(normalizedSegments, diarizationEnabled).map((segment) => ({
-    ...segment,
-    language
+  return normalizedSegments.map((segment, index) => ({
+    segmentIndex: index,
+    startSec: segment.startSec,
+    endSec: segment.endSec,
+    text: segment.text.trim(),
+    speakerLabel: segment.speakerLabel ?? null,
+    speakerConfidence: null,
+    language,
+    kind: "speech"
   }));
 }
 
@@ -671,48 +630,6 @@ function getErrorStatusCode(error: unknown) {
   return statusCode;
 }
 
-type AudioChunkWindow = {
-  index: number;
-  startSec: number;
-  endSec: number;
-  trimOverlapSec: number;
-};
-
-function buildAudioChunkWindows(params: {
-  durationSeconds: number;
-  targetSeconds: number;
-  overlapSeconds: number;
-}) {
-  const duration = Math.max(1, params.durationSeconds);
-  const target = Math.max(1, params.targetSeconds);
-  const overlap = Math.max(0, Math.min(params.overlapSeconds, target / 3));
-
-  const windows: AudioChunkWindow[] = [];
-  let cursor = 0;
-  let index = 0;
-  while (cursor < duration) {
-    const isFirst = index === 0;
-    const startSec = isFirst ? 0 : Math.max(0, cursor - overlap);
-    const endSec = Math.min(duration, cursor + target);
-    const trimOverlapSec = isFirst ? 0 : Math.min(overlap, endSec - startSec);
-    windows.push({
-      index,
-      startSec,
-      endSec,
-      trimOverlapSec
-    });
-
-    if (endSec >= duration) {
-      break;
-    }
-
-    cursor += target;
-    index += 1;
-  }
-
-  return windows;
-}
-
 async function sliceAudioChunk(params: {
   sourceFilePath: string;
   targetFilePath: string;
@@ -743,46 +660,6 @@ async function sliceAudioChunk(params: {
   ffmpegArgs.push("-acodec", "libmp3lame", "-f", "mp3", "-y", params.targetFilePath);
 
   await execFileAsync("ffmpeg", ffmpegArgs, { windowsHide: true });
-}
-
-async function padAudioBufferWithSilence(
-  audioBuffer: Buffer,
-  fileName: string,
-  padSilenceSec: number
-): Promise<Buffer> {
-  const workspaceDir = await mkdtemp(join(tmpdir(), "voxora-pad-"));
-  const extension = extname(fileName) || ".bin";
-  const sourceFilePath = join(workspaceDir, `source${extension}`);
-  const paddedFilePath = join(workspaceDir, "padded.mp3");
-  try {
-    await writeFile(sourceFilePath, audioBuffer);
-    await execFileAsync(
-      "ffmpeg",
-      [
-        "-v",
-        "error",
-        "-i",
-        sourceFilePath,
-        "-af",
-        `apad=pad_dur=${padSilenceSec.toFixed(3)}`,
-        "-vn",
-        "-ac",
-        "1",
-        "-ar",
-        "16000",
-        "-acodec",
-        "libmp3lame",
-        "-f",
-        "mp3",
-        "-y",
-        paddedFilePath
-      ],
-      { windowsHide: true }
-    );
-    return await readFile(paddedFilePath);
-  } finally {
-    await rm(workspaceDir, { recursive: true, force: true }).catch(() => undefined);
-  }
 }
 
 function getHoldIdempotencyKey(jobId: string) {
@@ -957,7 +834,7 @@ async function transcribeOpenAiWithChunking(params: {
   sourceObjectKey: string;
   language?: string;
   transcriptionHints?: string;
-  model?: string;
+  model: string;
   audioBuffer: Buffer;
   durationSeconds: number;
   requestId: string;
@@ -965,6 +842,8 @@ async function transcribeOpenAiWithChunking(params: {
   const providerLanguage = normalizeProviderLanguage(params.language);
   const fileName = getObjectFileName(params.sourceObjectKey);
   const extension = extname(fileName) || ".bin";
+  const capability = resolveOpenAiModelCapability(params.model);
+  assertManualSegmentMergeCompatible(capability);
   const bytesPerSecond = Math.max(1, params.audioBuffer.byteLength / params.durationSeconds);
   const maxBySize = Math.floor((env.OPENAI_MAX_FILE_BYTES * 0.85) / bytesPerSecond);
   const chunkTargetSeconds = Math.max(
@@ -974,26 +853,29 @@ async function transcribeOpenAiWithChunking(params: {
       maxBySize > 0 ? maxBySize : env.TRANSCRIPTION_CHUNK_TARGET_SECONDS
     )
   );
-  const chunkWindows = buildAudioChunkWindows({
-    durationSeconds: params.durationSeconds,
-    targetSeconds: chunkTargetSeconds,
-    overlapSeconds: env.TRANSCRIPTION_CHUNK_OVERLAP_SECONDS
-  });
 
   const workspaceDir = await mkdtemp(join(tmpdir(), "voxora-chunk-"));
   const sourceFilePath = join(workspaceDir, `source${extension}`);
   await writeFile(sourceFilePath, params.audioBuffer);
 
   try {
-    const mergedSegments: WhisperSegment[] = [];
+    const chunkWindows = await buildAudioChunkWindows({
+      sourceFilePath,
+      durationSeconds: params.durationSeconds,
+      targetSeconds: chunkTargetSeconds,
+      overlapSeconds: env.TRANSCRIPTION_CHUNK_OVERLAP_SECONDS
+    });
+    let mergedSegments: WhisperSegment[] = [];
     const chunkTexts: string[] = [];
-    let previousChunkTailText = "";
+    let previousChunkTranscript = "";
 
     logWorker("info", "Starting chunked transcription.", {
       request_id: params.requestId,
       job_id: params.jobId,
       user_id: params.userId,
       chunks: chunkWindows.length,
+      model: params.model,
+      raw_format: capability.rawFormat,
       chunk_target_seconds: chunkTargetSeconds,
       chunk_overlap_seconds: env.TRANSCRIPTION_CHUNK_OVERLAP_SECONDS
     });
@@ -1017,20 +899,16 @@ async function transcribeOpenAiWithChunking(params: {
         );
       }
 
-      // Build prompt: user hints + tail of previous chunk (for inter-chunk context)
-      const promptParts: string[] = [];
-      if (params.transcriptionHints && params.transcriptionHints.trim().length > 0) {
-        promptParts.push(params.transcriptionHints.trim());
-      }
-      if (previousChunkTailText.length > 0) {
-        promptParts.push(previousChunkTailText);
-      }
-      const chunkPrompt = promptParts.join(" ").slice(-500) || undefined;
+      const chunkPrompt = buildChunkPrompt({
+        capability,
+        transcriptionHints: params.transcriptionHints,
+        previousTranscriptText: previousChunkTranscript
+      });
 
       const chunkTranscription = await transcribeWithOpenAi({
         apiKey: getOpenAiApiKey(),
         baseUrl: env.OPENAI_BASE_URL,
-        model: params.model ?? env.OPENAI_WHISPER_MODEL,
+        capability,
         fileName: `chunk-${chunkWindow.index}.mp3`,
         language: providerLanguage,
         prompt: chunkPrompt,
@@ -1043,53 +921,39 @@ async function transcribeOpenAiWithChunking(params: {
         logWorker("warn", "Hallucination detected in chunk output — discarding and resetting context seed.", {
           request_id: params.requestId,
           job_id: params.jobId,
-          chunk_index: chunkWindow.index
+          chunk_index: chunkWindow.index,
+          strategy: "chunked_transcript",
+          model: params.model
         });
-        // Do NOT update previousChunkTailText. Propagating hallucinated text as the
-        // prompt for the next chunk creates a feedback loop that makes the model
-        // repeat the same token indefinitely across the entire transcription.
-        previousChunkTailText = "";
+        previousChunkTranscript = "";
       } else if (chunkText.length > 0) {
         chunkTexts.push(chunkText);
-        // Keep last ~200 chars as context seed for the next chunk
-        previousChunkTailText = chunkText.slice(-200);
+        previousChunkTranscript = chunkText;
       }
 
-      for (const segment of chunkTranscription.segments) {
-        // Drop segments that are themselves hallucinated repetitions
-        if (isHallucinatedText(segment.text)) {
-          continue;
-        }
+      const safeSegments = chunkTranscription.segments.filter(
+        (segment) => !isHallucinatedText(segment.text)
+      );
+      mergedSegments = mergeChunkSegments({
+        existingSegments: mergedSegments,
+        chunkSegments: safeSegments,
+        chunkWindow
+      });
 
-        const segmentEndRef = segment.endSec ?? segment.startSec ?? 0;
-        if (
-          chunkWindow.trimOverlapSec > 0 &&
-          Number.isFinite(segmentEndRef) &&
-          segmentEndRef <= chunkWindow.trimOverlapSec
-        ) {
-          continue;
-        }
-
-        const normalizedStart =
-          segment.startSec !== null
-            ? Math.max(segment.startSec, chunkWindow.trimOverlapSec)
-            : null;
-        const normalizedEnd =
-          segment.endSec !== null ? Math.max(segment.endSec, chunkWindow.trimOverlapSec) : null;
-        mergedSegments.push({
-          chunkIndex: mergedSegments.length,
-          startSec:
-            normalizedStart !== null
-              ? Number((normalizedStart + chunkWindow.startSec).toFixed(3))
-              : null,
-          endSec:
-            normalizedEnd !== null ? Number((normalizedEnd + chunkWindow.startSec).toFixed(3)) : null,
-          text: segment.text
-        });
-      }
+      logWorker("info", "Chunk transcription completed.", {
+        request_id: params.requestId,
+        job_id: params.jobId,
+        user_id: params.userId,
+        chunk_index: chunkWindow.index,
+        chunk_duration_seconds: Number(chunkDuration.toFixed(3)),
+        chunk_bytes: chunkBuffer.byteLength,
+        prompt_words: chunkPrompt ? chunkPrompt.split(/\s+/).filter(Boolean).length : 0,
+        segment_count: safeSegments.length,
+        hallucinated_chunk: chunkIsHallucination
+      });
     }
 
-    const fullText = mergedSegments.map((segment) => segment.text).join(" ").trim();
+    const fullText = mergedSegments.map((segment) => segment.text.trim()).join(" ").trim();
     return {
       text: fullText.length > 0 ? fullText : chunkTexts.join(" ").trim(),
       durationSeconds: params.durationSeconds,
@@ -1098,6 +962,186 @@ async function transcribeOpenAiWithChunking(params: {
   } finally {
     await rm(workspaceDir, { recursive: true, force: true }).catch(() => undefined);
   }
+}
+
+async function transcribeDirectWithOpenAi(params: {
+  jobId: string;
+  userId: string;
+  sourceObjectKey: string;
+  language?: string;
+  transcriptionHints?: string;
+  capability: ReturnType<typeof resolveOpenAiModelCapability>;
+  audioBuffer: Buffer;
+  requestId: string;
+  strategy: TranscriptionStrategy;
+}) {
+  const providerLanguage = normalizeProviderLanguage(params.language);
+  const prompt = buildChunkPrompt({
+    capability: params.capability,
+    transcriptionHints: params.transcriptionHints
+  });
+
+  logWorker("info", "Starting direct transcription.", {
+    request_id: params.requestId,
+    job_id: params.jobId,
+    user_id: params.userId,
+    strategy: params.strategy,
+    model: params.capability.model,
+    raw_format: params.capability.rawFormat,
+    bytes: params.audioBuffer.byteLength
+  });
+
+  return transcribeWithOpenAi({
+    apiKey: getOpenAiApiKey(),
+    baseUrl: env.OPENAI_BASE_URL,
+    capability: params.capability,
+    fileName: getObjectFileName(params.sourceObjectKey),
+    language: providerLanguage,
+    prompt,
+    audioBuffer: params.audioBuffer,
+    timeoutMs: env.OPENAI_TIMEOUT_MS
+  });
+}
+
+async function applyOptionalExternalDiarization(params: {
+  requestId: string;
+  jobId: string;
+  userId: string;
+  sourceObjectKey: string;
+  audioBuffer: Buffer;
+  segments: WhisperSegment[];
+}) {
+  if (!env.DIARIZER_URL) {
+    return {
+      segments: params.segments,
+      speakerMode: "none" as const
+    };
+  }
+
+  try {
+    logWorker("info", "Running two-stage diarization via diarizer service.", {
+      request_id: params.requestId,
+      job_id: params.jobId,
+      user_id: params.userId,
+      diarizer_url: env.DIARIZER_URL,
+      segments: params.segments.length
+    });
+    const diarized = await applyExternalDiarization({
+      diarizerUrl: env.DIARIZER_URL,
+      timeoutMs: env.DIARIZER_TIMEOUT_MS,
+      audioBuffer: params.audioBuffer,
+      fileName: getObjectFileName(params.sourceObjectKey),
+      segments: params.segments
+    });
+    logWorker("info", "Diarization merged into segments.", {
+      request_id: params.requestId,
+      job_id: params.jobId,
+      speakers_detected: diarized.speakersDetected
+    });
+    return diarized;
+  } catch (error) {
+    logWorker("warn", "Diarizer service failed; keeping transcript without speaker labels.", {
+      request_id: params.requestId,
+      job_id: params.jobId,
+      error: toErrorMessage(error)
+    });
+    return {
+      segments: params.segments.map((segment) => ({
+        ...segment,
+        speakerLabel: null
+      })),
+      speakerMode: "none" as const
+    };
+  }
+}
+
+async function runCanonicalTranscription(params: {
+  requestId: string;
+  jobId: string;
+  userId: string;
+  sourceObjectKey: string;
+  language?: string;
+  transcriptionHints?: string;
+  diarizationEnabled: boolean;
+  audioBuffer: Buffer;
+  durationSeconds: number | null;
+}): Promise<{
+  result: TranscriptionProviderResult;
+  strategy: TranscriptionStrategy;
+  model: string;
+}> {
+  const selected = selectTranscriptionStrategy({
+    audioBytes: params.audioBuffer.byteLength,
+    maxFileBytes: env.OPENAI_MAX_FILE_BYTES,
+    diarizationEnabled: params.diarizationEnabled,
+    models: strategyModels
+  });
+
+  if (selected.strategy === "direct_transcript" || selected.strategy === "direct_diarized") {
+    const result = await transcribeDirectWithOpenAi({
+      requestId: params.requestId,
+      jobId: params.jobId,
+      userId: params.userId,
+      sourceObjectKey: params.sourceObjectKey,
+      language: params.language,
+      transcriptionHints: params.transcriptionHints,
+      capability: selected.capability,
+      audioBuffer: params.audioBuffer,
+      strategy: selected.strategy
+    });
+    return {
+      result,
+      strategy: selected.strategy,
+      model: selected.model
+    };
+  }
+
+  if (params.durationSeconds === null || !Number.isFinite(params.durationSeconds) || params.durationSeconds <= 0) {
+    throw new Error("Arquivo exige chunking mas a duração não pôde ser calculada.");
+  }
+
+  const chunked = await transcribeOpenAiWithChunking({
+    requestId: params.requestId,
+    jobId: params.jobId,
+    userId: params.userId,
+    sourceObjectKey: params.sourceObjectKey,
+    language: params.language,
+    transcriptionHints: params.transcriptionHints,
+    model: selected.model,
+    audioBuffer: params.audioBuffer,
+    durationSeconds: params.durationSeconds
+  });
+
+  let result: TranscriptionProviderResult = {
+    text: chunked.text.trim(),
+    durationSeconds: chunked.durationSeconds ?? params.durationSeconds,
+    segments: chunked.segments,
+    timingMode: "segment",
+    speakerMode: "none",
+    rawFormat: "verbose_json"
+  };
+
+  if (selected.strategy === "chunked_diarized") {
+    const diarized = await applyOptionalExternalDiarization({
+      requestId: params.requestId,
+      jobId: params.jobId,
+      userId: params.userId,
+      sourceObjectKey: params.sourceObjectKey,
+      audioBuffer: params.audioBuffer,
+      segments: result.segments
+    });
+    result = {
+      ...result,
+      segments: diarized.segments,
+      speakerMode: diarized.speakerMode
+    };
+  }
+
+  return {
+    result,
+    strategy: selected.strategy,
+    model: selected.model
+  };
 }
 
 const databaseUrl = buildDatabaseUrl(env);
@@ -1709,6 +1753,8 @@ const worker = new Worker<TranscriptionJobData>(
 
       let transcriptionText = "";
       let segments: WhisperSegment[] = [];
+      let processingStrategy: TranscriptionStrategy = "direct_transcript";
+      let requestModel = strategyModels.directTranscriptModel;
       if (whisperProvider === "simulation") {
         transcriptionText =
           "Modo simulação habilitado. Configure OPENAI_API_KEY para usar transcrição real.";
@@ -1720,155 +1766,42 @@ const worker = new Worker<TranscriptionJobData>(
             text: transcriptionText
           }
         ];
-      } else if (isDiarizeModel(env.OPENAI_WHISPER_MODEL)) {
-        // gpt-4o-transcribe-diarize handles its own audio segmentation via
-        // chunking_strategy: "auto"; manual chunking would break speaker continuity.
-        const fitsForDiarize = audioBuffer.byteLength <= env.OPENAI_MAX_FILE_BYTES;
-
-        if (!fitsForDiarize) {
-          // File too large for diarize model — fall back to chunked transcription
-          // with a standard model. Speaker labels will be heuristic in this case.
-          if (durationSeconds === null || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-            throw new Error(
-              "Arquivo exige chunking mas a duração não pôde ser calculada."
-            );
-          }
-          logWorker("warn", "Audio too large for diarize model; falling back to chunked transcription.", {
-            request_id: processingRequestId,
-            job_id: jobEntity.id,
-            user_id: jobEntity.userId,
-            bytes: audioBuffer.byteLength,
-            max_bytes: env.OPENAI_MAX_FILE_BYTES,
-            fallback_model: env.OPENAI_DIARIZE_FALLBACK_MODEL
-          });
-          const chunked = await transcribeOpenAiWithChunking({
-            jobId: jobEntity.id,
-            userId: jobEntity.userId,
-            sourceObjectKey: jobEntity.sourceObjectKey,
-            language: jobEntity.language,
-            transcriptionHints: job.data.transcriptionHints,
-            model: env.OPENAI_DIARIZE_FALLBACK_MODEL,
-            audioBuffer,
-            durationSeconds,
-            requestId: processingRequestId
-          });
-          transcriptionText = chunked.text.trim();
-          durationSeconds = chunked.durationSeconds ?? durationSeconds;
-          segments = chunked.segments;
-
-          // Stage 2: run pyannote diarization on the original audio and merge
-          // speaker labels into the transcript segments by timestamp overlap.
-          if (env.DIARIZER_URL) {
-            try {
-              logWorker("info", "Running two-stage diarization via diarizer service.", {
-                request_id: processingRequestId,
-                job_id: jobEntity.id,
-                user_id: jobEntity.userId,
-                diarizer_url: env.DIARIZER_URL,
-                segments: segments.length
-              });
-              const diarization = await callDiarizerService({
-                serviceUrl: env.DIARIZER_URL,
-                audioBuffer,
-                fileName: getObjectFileName(jobEntity.sourceObjectKey),
-                timeoutMs: env.DIARIZER_TIMEOUT_MS
-              });
-              segments = applyDiarizationToSegments(segments, diarization);
-              const speakerCount = new Set(diarization.map((d) => d.speaker)).size;
-              logWorker("info", "Diarization merged into segments.", {
-                request_id: processingRequestId,
-                job_id: jobEntity.id,
-                speakers_detected: speakerCount,
-                diarization_entries: diarization.length
-              });
-            } catch (diarizerError) {
-              logWorker("warn", "Diarizer service failed; falling back to heuristic speaker labels.", {
-                request_id: processingRequestId,
-                job_id: jobEntity.id,
-                error: toErrorMessage(diarizerError)
-              });
-            }
-          }
-        } else {
-          const providerLanguage = normalizeProviderLanguage(jobEntity.language);
-          const paddedBuffer = await padAudioBufferWithSilence(
-            audioBuffer,
-            getObjectFileName(jobEntity.sourceObjectKey),
-            0.5
-          );
-          logWorker("info", "Starting diarize transcription.", {
-            request_id: processingRequestId,
-            job_id: jobEntity.id,
-            user_id: jobEntity.userId,
-            model: env.OPENAI_WHISPER_MODEL,
-            bytes: paddedBuffer.byteLength
-          });
-          const transcription = await transcribeWithOpenAi({
-            apiKey: getOpenAiApiKey(),
-            baseUrl: env.OPENAI_BASE_URL,
-            model: env.OPENAI_WHISPER_MODEL,
-            fileName: getObjectFileName(jobEntity.sourceObjectKey).replace(/\.[^.]+$/, ".mp3"),
-            language: providerLanguage,
-            audioBuffer: paddedBuffer,
-            timeoutMs: env.OPENAI_TIMEOUT_MS
-          });
-          transcriptionText = transcription.text.trim();
-          durationSeconds = transcription.durationSeconds ?? durationSeconds;
-          segments = transcription.segments;
-        }
       } else {
-        const mustChunkBySize = audioBuffer.byteLength > env.OPENAI_MAX_FILE_BYTES;
-        const shouldChunkByDuration =
-          durationSeconds !== null &&
-          durationSeconds > env.TRANSCRIPTION_CHUNK_TARGET_SECONDS + env.TRANSCRIPTION_CHUNK_OVERLAP_SECONDS;
-        if (mustChunkBySize || shouldChunkByDuration) {
-          if (durationSeconds === null || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-            throw new Error(
-              "Arquivo exige chunking por tamanho, mas a duração não pôde ser calculada."
-            );
-          }
-          const chunked = await transcribeOpenAiWithChunking({
-            jobId: jobEntity.id,
-            userId: jobEntity.userId,
-            sourceObjectKey: jobEntity.sourceObjectKey,
-            language: jobEntity.language,
-            transcriptionHints: job.data.transcriptionHints,
-            audioBuffer,
-            durationSeconds,
-            requestId: processingRequestId
-          });
-          transcriptionText = chunked.text.trim();
-          durationSeconds = chunked.durationSeconds ?? durationSeconds;
-          segments = chunked.segments;
-        } else {
-          const providerLanguage = normalizeProviderLanguage(jobEntity.language);
-          const paddedBuffer = await padAudioBufferWithSilence(
-            audioBuffer,
-            getObjectFileName(jobEntity.sourceObjectKey),
-            0.5
-          );
-          const transcription = await transcribeWithOpenAi({
-            apiKey: getOpenAiApiKey(),
-            baseUrl: env.OPENAI_BASE_URL,
-            model: env.OPENAI_WHISPER_MODEL,
-            fileName: getObjectFileName(jobEntity.sourceObjectKey).replace(/\.[^.]+$/, ".mp3"),
-            language: providerLanguage,
-            prompt: job.data.transcriptionHints,
-            audioBuffer: paddedBuffer,
-            timeoutMs: env.OPENAI_TIMEOUT_MS
-          });
-          transcriptionText = transcription.text.trim();
-          durationSeconds = transcription.durationSeconds ?? durationSeconds;
-          segments = transcription.segments;
-        }
+        const transcription = await runCanonicalTranscription({
+          requestId: processingRequestId,
+          jobId: jobEntity.id,
+          userId: jobEntity.userId,
+          sourceObjectKey: jobEntity.sourceObjectKey,
+          language: jobEntity.language,
+          transcriptionHints: job.data.transcriptionHints,
+          diarizationEnabled: jobEntity.diarizationEnabled,
+          audioBuffer,
+          durationSeconds
+        });
+        processingStrategy = transcription.strategy;
+        requestModel = transcription.model;
+        transcriptionText = transcription.result.text.trim();
+        durationSeconds = transcription.result.durationSeconds ?? durationSeconds;
+        segments = transcription.result.segments;
+
+        logWorker("info", "Canonical transcription completed.", {
+          request_id: processingRequestId,
+          job_id: jobEntity.id,
+          user_id: jobEntity.userId,
+          strategy: processingStrategy,
+          model: requestModel,
+          raw_format: transcription.result.rawFormat,
+          timing_mode: transcription.result.timingMode,
+          speaker_mode: transcription.result.speakerMode,
+          segment_count: segments.length
+        });
       }
 
       const originalSegments = buildOriginalSegments(
         segments,
         transcriptionText,
         jobEntity.language,
-        durationSeconds,
-        jobEntity.diarizationEnabled
+        durationSeconds
       );
 
       const roundedDuration =

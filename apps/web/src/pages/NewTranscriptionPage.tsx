@@ -151,7 +151,7 @@ export default function NewTranscriptionPage() {
         sourceObjectKey: presign.objectKey,
         language,
         features: {
-          diarization: true,
+          diarization: false,
           generatePdf: true,
           translationTargetLanguage: translationTargetLanguage || undefined
         }

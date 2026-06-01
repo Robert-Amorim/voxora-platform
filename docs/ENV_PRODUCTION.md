@@ -60,8 +60,12 @@
 | `TRANSCRIPTION_MAX_ATTEMPTS` | `3` | Tentativas antes de DLQ |
 | `TRANSCRIPTION_RETRY_DELAY_MS` | `2000` | Delay base para retry (exponencial) |
 | `RAW_UPLOAD_RETENTION_DAYS` | `7` | Dias para reter áudio bruto |
-| `OPENAI_WHISPER_MODEL` | `whisper-1` | Modelo Whisper |
+| `OPENAI_TRANSCRIBE_DIRECT_MODEL` | `gpt-4o-transcribe` | Modelo para áudio curto sem diarização |
+| `OPENAI_TRANSCRIBE_DIARIZE_MODEL` | `gpt-4o-transcribe-diarize` | Modelo para áudio curto com diarização nativa |
+| `OPENAI_TRANSCRIBE_CHUNKED_MODEL` | `whisper-1` | Modelo canônico para chunking manual com timestamps |
 | `OPENAI_TIMEOUT_MS` | `300000` | Timeout da API OpenAI (ms) |
+| `TRANSCRIPTION_CHUNK_TARGET_SECONDS` | `300` | Tamanho alvo do chunk em segundos |
+| `TRANSCRIPTION_CHUNK_OVERLAP_SECONDS` | `5` | Overlap entre chunks em segundos |
 
 ## Checklist pré-deploy
 

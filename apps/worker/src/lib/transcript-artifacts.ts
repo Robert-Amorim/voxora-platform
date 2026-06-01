@@ -66,6 +66,41 @@ function formatDuration(seconds: number | null) {
   return `${hh}:${mm}:${ss}`;
 }
 
+function joinSegmentsAsProse(segments: TranscriptArtifactSegment[]) {
+  const parts: string[] = [];
+
+  for (const segment of segments) {
+    const text = segment.text.trim();
+    if (!text) {
+      continue;
+    }
+
+    if (parts.length === 0) {
+      parts.push(text);
+      continue;
+    }
+
+    const previous = parts[parts.length - 1];
+    const previousEndsWithHyphen = /[-\u2013\u2014]$/.test(previous);
+    const previousEndsWithOpenPunctuation = /[(["']$/.test(previous);
+    const currentStartsWithPunctuation = /^[,.;:!?)]/.test(text);
+
+    if (previousEndsWithHyphen) {
+      parts[parts.length - 1] = `${previous.slice(0, -1)}${text}`;
+      continue;
+    }
+
+    if (previousEndsWithOpenPunctuation || currentStartsWithPunctuation) {
+      parts[parts.length - 1] = `${previous}${text}`;
+      continue;
+    }
+
+    parts.push(text);
+  }
+
+  return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
 export function renderTranscriptText(params: {
   id: string;
   sourceObjectKey: string;
@@ -82,6 +117,7 @@ export function renderTranscriptText(params: {
     `Duration: ${formatDuration(params.durationSeconds)}`,
     ""
   ];
+  const prose = joinSegmentsAsProse(params.segments);
 
   const lines = params.segments.map((segment) => {
     const start =
@@ -91,7 +127,11 @@ export function renderTranscriptText(params: {
     return `[${start} - ${end}] ${speaker}${segment.text.trim()}`;
   });
 
-  return [...header, ...lines, ""].join("\n");
+  const body = prose.length > 0
+    ? ["--- Transcricao Corrida ---", prose, "", "--- Segmentos ---", ...lines, ""]
+    : ["--- Segmentos ---", ...lines, ""];
+
+  return [...header, ...body].join("\n");
 }
 
 export function renderSrtText(segments: TranscriptArtifactSegment[]) {
