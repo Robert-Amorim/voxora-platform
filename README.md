@@ -130,8 +130,18 @@ npm run prisma:migrate --workspace @voxora/api
 - `WHISPER_PROVIDER=openai|simulation`
 - `OPENAI_API_KEY`
 - `OPENAI_BASE_URL` (default: `https://api.openai.com/v1`)
-- `OPENAI_WHISPER_MODEL` (default: `whisper-1`)
+- `OPENAI_TRANSCRIBE_DIRECT_MODEL` (default: `gpt-4o-transcribe`)
+- `OPENAI_TRANSCRIBE_DIARIZE_MODEL` (default: `gpt-4o-transcribe-diarize`)
+- `OPENAI_TRANSCRIBE_CHUNKED_MODEL` (default: `whisper-1`)
 - `OPENAI_TIMEOUT_MS`
 - `OPENAI_MAX_FILE_BYTES`
+- `TRANSCRIPTION_CHUNK_TARGET_SECONDS` (default: `300`)
+- `TRANSCRIPTION_CHUNK_OVERLAP_SECONDS` (default: `5`)
 
-Se `WHISPER_PROVIDER=openai`, o worker usa transcrição real via API Whisper.
+Pipeline atual:
+
+- audio curto sem diarizacao: `gpt-4o-transcribe`
+- audio curto com diarizacao: `gpt-4o-transcribe-diarize`
+- audio acima de 25 MB: `whisper-1` com chunking manual e merge por segmentos
+
+`OPENAI_WHISPER_MODEL` permanece apenas como fallback legado de compatibilidade.

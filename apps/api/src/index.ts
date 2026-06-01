@@ -746,12 +746,12 @@ const createTranscriptionBodySchema = z.object({
   transcriptionHints: z.string().trim().max(500).optional(),
   features: z
     .object({
-      diarization: z.boolean().default(true),
+      diarization: z.boolean().default(false),
       translationTargetLanguage: z.string().min(2).max(16).optional(),
       generatePdf: z.boolean().default(true)
     })
     .default({
-      diarization: true,
+      diarization: false,
       generatePdf: true
     })
 });
