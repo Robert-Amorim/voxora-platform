@@ -66,6 +66,13 @@
 | `OPENAI_TIMEOUT_MS` | `300000` | Timeout da API OpenAI (ms) |
 | `TRANSCRIPTION_CHUNK_TARGET_SECONDS` | `300` | Tamanho alvo do chunk em segundos |
 | `TRANSCRIPTION_CHUNK_OVERLAP_SECONDS` | `5` | Overlap entre chunks em segundos |
+| `AUDIO_PREFLIGHT_ENABLED` | `true` | Ativa analise/otimizacao de audio antes da transcricao |
+| `AUDIO_PREFLIGHT_SAMPLE_RATE` | `16000` | Sample rate alvo para envio ao provedor |
+| `AUDIO_PREFLIGHT_TARGET_I` | `-18` | Loudness integrado alvo do filtro `loudnorm` |
+| `AUDIO_PREFLIGHT_QUIET_MEAN_DB` | `-32` | Volume medio abaixo do qual o audio e marcado como baixo |
+| `AUDIO_PREFLIGHT_CLIPPING_PEAK_DB` | `-1` | Pico acima do qual o audio e marcado com risco de clipping |
+| `AUDIO_PREFLIGHT_HIGHPASS_HZ` | `80` | Corte passa-altas para reduzir rumble/ruido grave |
+| `AUDIO_PREFLIGHT_LOWPASS_HZ` | `7600` | Corte passa-baixas para reduzir hiss/ruido agudo |
 
 ## Checklist pré-deploy
 

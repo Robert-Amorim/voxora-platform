@@ -16,7 +16,7 @@ O dominio `voxora.integraretech.com.br` esta publicado via Oracle DNS/OCI Load B
 |---|---|---|
 | `apps/web` | Implementado | Landing, login, recuperacao de senha, dashboard, transcricoes, carteira, suporte e admin |
 | `apps/api` | Implementado | Fastify com auth, perfil, pagamentos, webhooks, uploads, jobs, suporte/admin e downloads |
-| `apps/worker` | Implementado | BullMQ, OpenAI, chunking, diarizacao opcional, traducao, artefatos, DLQ e limpezas |
+| `apps/worker` | Implementado | BullMQ, audio preflight, OpenAI, chunking, diarizacao opcional, traducao, artefatos, DLQ e limpezas |
 | `packages/shared` | Implementado | Status de job/pagamento, tipos de ledger, formatos e extensoes aceitas |
 | Banco | Implementado | Prisma + MySQL; schema em `apps/api/prisma/schema.prisma` |
 | Fila/cache | Implementado | Redis + BullMQ; fila principal `transcriptions`, DLQ `transcriptions.dlq` |
@@ -59,6 +59,7 @@ Funcionalidades presentes:
 - suporte/tickets;
 - admin de usuarios/tickets;
 - worker com estrategias direct/chunked/diarized;
+- audio preflight com otimizacao FFmpeg antes do envio ao provedor;
 - DLQ apos falhas finais;
 - limpeza de uploads brutos e outputs expirados.
 

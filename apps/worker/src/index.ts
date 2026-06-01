@@ -45,6 +45,10 @@ import { buildChunkPrompt } from "./lib/transcription/prompt-policy";
 import { buildAudioChunkWindows } from "./lib/transcription/chunk-planner";
 import { mergeChunkSegments } from "./lib/transcription/segment-merge";
 import { applyExternalDiarization } from "./lib/transcription/diarization-stage";
+import {
+  runAudioPreflight,
+  type AudioPreflightOptions
+} from "./lib/transcription/audio-preflight";
 
 const envCandidates = [
   resolve(process.cwd(), ".env"),
@@ -88,6 +92,13 @@ const envSchema = z.object({
   OPENAI_MAX_FILE_BYTES: z.coerce.number().int().min(1024).default(26214400),
   TRANSCRIPTION_CHUNK_TARGET_SECONDS: z.coerce.number().int().min(30).max(7200).default(300),
   TRANSCRIPTION_CHUNK_OVERLAP_SECONDS: z.coerce.number().min(0).max(30).default(5),
+  AUDIO_PREFLIGHT_ENABLED: z.coerce.boolean().default(true),
+  AUDIO_PREFLIGHT_SAMPLE_RATE: z.coerce.number().int().min(8000).max(48000).default(16000),
+  AUDIO_PREFLIGHT_TARGET_I: z.coerce.number().min(-32).max(-10).default(-18),
+  AUDIO_PREFLIGHT_QUIET_MEAN_DB: z.coerce.number().min(-80).max(-10).default(-32),
+  AUDIO_PREFLIGHT_CLIPPING_PEAK_DB: z.coerce.number().min(-6).max(0).default(-1),
+  AUDIO_PREFLIGHT_HIGHPASS_HZ: z.coerce.number().int().min(20).max(300).default(80),
+  AUDIO_PREFLIGHT_LOWPASS_HZ: z.coerce.number().int().min(3000).max(12000).default(7600),
   TRANSCRIPTION_RETRY_DELAY_MS: z.coerce.number().int().min(100).max(600000).default(2000),
   TRANSCRIPTION_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
   RAW_UPLOAD_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(7),
@@ -129,6 +140,15 @@ const strategyModels: StrategyModels = {
   chunkedTranscriptModel:
     env.OPENAI_TRANSCRIBE_CHUNKED_MODEL?.trim() ||
     (env.OPENAI_WHISPER_MODEL === "whisper-1" ? env.OPENAI_WHISPER_MODEL : "whisper-1")
+};
+const audioPreflightOptions: AudioPreflightOptions = {
+  enabled: env.AUDIO_PREFLIGHT_ENABLED,
+  targetSampleRate: env.AUDIO_PREFLIGHT_SAMPLE_RATE,
+  targetMeanVolumeDb: env.AUDIO_PREFLIGHT_TARGET_I,
+  quietMeanThresholdDb: env.AUDIO_PREFLIGHT_QUIET_MEAN_DB,
+  clippingPeakThresholdDb: env.AUDIO_PREFLIGHT_CLIPPING_PEAK_DB,
+  highpassHz: env.AUDIO_PREFLIGHT_HIGHPASS_HZ,
+  lowpassHz: env.AUDIO_PREFLIGHT_LOWPASS_HZ
 };
 
 type QueueTaskType = "transcription" | "refresh-original" | "translation";
@@ -832,6 +852,7 @@ async function transcribeOpenAiWithChunking(params: {
   jobId: string;
   userId: string;
   sourceObjectKey: string;
+  providerFileName: string;
   language?: string;
   transcriptionHints?: string;
   model: string;
@@ -840,7 +861,7 @@ async function transcribeOpenAiWithChunking(params: {
   requestId: string;
 }) {
   const providerLanguage = normalizeProviderLanguage(params.language);
-  const fileName = getObjectFileName(params.sourceObjectKey);
+  const fileName = params.providerFileName;
   const extension = extname(fileName) || ".bin";
   const capability = resolveOpenAiModelCapability(params.model);
   assertManualSegmentMergeCompatible(capability);
@@ -968,6 +989,7 @@ async function transcribeDirectWithOpenAi(params: {
   jobId: string;
   userId: string;
   sourceObjectKey: string;
+  providerFileName: string;
   language?: string;
   transcriptionHints?: string;
   capability: ReturnType<typeof resolveOpenAiModelCapability>;
@@ -995,7 +1017,7 @@ async function transcribeDirectWithOpenAi(params: {
     apiKey: getOpenAiApiKey(),
     baseUrl: env.OPENAI_BASE_URL,
     capability: params.capability,
-    fileName: getObjectFileName(params.sourceObjectKey),
+    fileName: params.providerFileName,
     language: providerLanguage,
     prompt,
     audioBuffer: params.audioBuffer,
@@ -1070,8 +1092,30 @@ async function runCanonicalTranscription(params: {
   strategy: TranscriptionStrategy;
   model: string;
 }> {
+  const preflight = await runAudioPreflight({
+    audioBuffer: params.audioBuffer,
+    sourceObjectKey: params.sourceObjectKey,
+    options: audioPreflightOptions
+  });
+
+  logWorker("info", "Audio preflight completed.", {
+    request_id: params.requestId,
+    job_id: params.jobId,
+    user_id: params.userId,
+    enabled: audioPreflightOptions.enabled,
+    optimized: preflight.optimized,
+    provider_file_name: preflight.fileName,
+    original_bytes: params.audioBuffer.byteLength,
+    prepared_bytes: preflight.audioBuffer.byteLength,
+    mean_volume_db: preflight.metrics.meanVolumeDb,
+    max_volume_db: preflight.metrics.maxVolumeDb,
+    is_likely_too_quiet: preflight.metrics.isLikelyTooQuiet,
+    has_clipping_risk: preflight.metrics.hasClippingRisk,
+    reasons: preflight.reasons
+  });
+
   const selected = selectTranscriptionStrategy({
-    audioBytes: params.audioBuffer.byteLength,
+    audioBytes: preflight.audioBuffer.byteLength,
     maxFileBytes: env.OPENAI_MAX_FILE_BYTES,
     diarizationEnabled: params.diarizationEnabled,
     models: strategyModels
@@ -1083,10 +1127,11 @@ async function runCanonicalTranscription(params: {
       jobId: params.jobId,
       userId: params.userId,
       sourceObjectKey: params.sourceObjectKey,
+      providerFileName: preflight.fileName,
       language: params.language,
       transcriptionHints: params.transcriptionHints,
       capability: selected.capability,
-      audioBuffer: params.audioBuffer,
+      audioBuffer: preflight.audioBuffer,
       strategy: selected.strategy
     });
     return {
@@ -1105,10 +1150,11 @@ async function runCanonicalTranscription(params: {
     jobId: params.jobId,
     userId: params.userId,
     sourceObjectKey: params.sourceObjectKey,
+    providerFileName: preflight.fileName,
     language: params.language,
     transcriptionHints: params.transcriptionHints,
     model: selected.model,
-    audioBuffer: params.audioBuffer,
+    audioBuffer: preflight.audioBuffer,
     durationSeconds: params.durationSeconds
   });
 
@@ -1127,7 +1173,7 @@ async function runCanonicalTranscription(params: {
       jobId: params.jobId,
       userId: params.userId,
       sourceObjectKey: params.sourceObjectKey,
-      audioBuffer: params.audioBuffer,
+      audioBuffer: preflight.audioBuffer,
       segments: result.segments
     });
     result = {

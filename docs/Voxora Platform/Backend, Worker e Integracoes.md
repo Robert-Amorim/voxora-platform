@@ -47,6 +47,7 @@ Responsabilidades observadas:
 - selecionar estrategia de processamento;
 - criar chunks de audio quando necessario;
 - aplicar prompt policy e guardrails;
+- analisar e otimizar audio antes do envio ao provedor;
 - acionar OpenAI;
 - aplicar diarizacao opcional;
 - traduzir quando solicitado;
@@ -105,6 +106,7 @@ Grupos criticos:
 - storage: `OCI_*`, `UPLOADS_DIR`, `OUTPUTS_DIR`;
 - OpenAI: `OPENAI_API_KEY`, `OPENAI_TRANSCRIBE_*`;
 - worker: `WORKER_CONCURRENCY`, `TRANSCRIPTION_*`, `RAW_UPLOAD_*`, `OUTPUT_*`.
+- audio preflight: `AUDIO_PREFLIGHT_*`.
 
 ## Fluxo de pagamento
 
@@ -125,15 +127,19 @@ Pontos sensiveis:
 
 1. API cria job e enfileira tarefa.
 2. Worker valida arquivo e duracao.
-3. Estrategia:
+3. Worker executa audio preflight:
+   - mede volume medio/pico com FFmpeg;
+   - marca risco de audio muito baixo ou clipping;
+   - gera MP3 mono 16 kHz com highpass/lowpass, `dynaudnorm` e `loudnorm`.
+4. Estrategia:
    - direto sem diarizacao;
    - direto com diarizacao;
    - chunked;
    - chunked com diarizacao.
-4. Worker persiste transcript original.
-5. Se solicitado, cria traducao.
-6. Worker gera artefatos e atualiza status.
-7. API disponibiliza resultado e downloads.
+5. Worker persiste transcript original.
+6. Se solicitado, cria traducao.
+7. Worker gera artefatos e atualiza status.
+8. API disponibiliza resultado e downloads.
 
 ## Checks recomendados
 
