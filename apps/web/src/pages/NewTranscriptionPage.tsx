@@ -42,6 +42,8 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+const MAX_FILE_SIZE_LABEL = formatBytes(MAX_FILE_BYTES);
+
 function validateFile(file: File): string {
   const ext = "." + file.name.split(".").pop()?.toLowerCase();
   if (!ACCEPTED_EXTENSIONS.includes(ext)) {
@@ -477,6 +479,25 @@ export default function NewTranscriptionPage() {
                           </span>
                         </div>
                       ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-amber-400/30 bg-amber-50 p-4 dark:bg-amber-950/20">
+                  <div className="flex items-start gap-3">
+                    <span className="material-symbols-outlined mt-0.5 text-[18px] text-amber-600 dark:text-amber-300">
+                      info
+                    </span>
+                    <div className="space-y-2">
+                      <p className="font-display text-xs font-semibold uppercase tracking-[0.22em] text-amber-700 dark:text-amber-300">
+                        Limite de upload
+                      </p>
+                      <p className="font-body text-sm font-semibold text-amber-900 dark:text-amber-100">
+                        Envie arquivos de até {MAX_FILE_SIZE_LABEL} por transcrição.
+                      </p>
+                      <p className="font-body text-xs leading-relaxed text-amber-800 dark:text-amber-200/90">
+                        Formatos aceitos: MP3, M4A, WAV, MP4, WEBM, OGG e MPEG. Se o vídeo ou áudio estiver maior que esse limite, comprima o arquivo ou exporte uma versão menor antes do envio.
+                      </p>
                     </div>
                   </div>
                 </div>
