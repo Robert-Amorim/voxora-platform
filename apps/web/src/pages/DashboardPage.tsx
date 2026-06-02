@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardSidebar from "../components/dashboard/DashboardSidebar";
 import DashboardStatsGrid from "../components/dashboard/DashboardStatsGrid";
@@ -39,6 +39,7 @@ export default function DashboardPage() {
   const [ledger, setLedger] = useState<WalletLedgerEntry[]>([]);
   const [jobs, setJobs] = useState<TranscriptionJob[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [jobsFeedbackMessage, setJobsFeedbackMessage] = useState("");
   const [jobsFeedbackTone, setJobsFeedbackTone] = useState<FeedbackTone>("neutral");
   const [retryingJobIds, setRetryingJobIds] = useState<string[]>([]);
@@ -57,14 +58,14 @@ export default function DashboardPage() {
   );
 
   const visibleJobs = useMemo(() => {
-    const normalized = searchTerm.trim().toLowerCase();
+    const normalized = deferredSearchTerm.trim().toLowerCase();
     if (!normalized) return jobs;
     return jobs.filter((job) => {
       const source = getFileNameFromObjectKey(job.sourceObjectKey).toLowerCase();
       const language = job.language.toLowerCase();
       return source.includes(normalized) || language.includes(normalized);
     });
-  }, [jobs, searchTerm]);
+  }, [jobs, deferredSearchTerm]);
 
   const walletUsagePercent = useMemo(() => {
     if (!wallet) return 0;

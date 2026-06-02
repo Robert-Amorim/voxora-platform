@@ -17,6 +17,7 @@ import {
 } from "../lib/api";
 import {
   CARD_MIN_TOP_UP_BRL,
+  getProviderStatusDetailLabel,
   PIX_MIN_TOP_UP_BRL,
   type TopUpMethod
 } from "../lib/payments";
@@ -226,7 +227,11 @@ export default function CarteiraPage() {
         } else if (status === "pending") {
           setFeedback("neutral", "Pagamento enviado. Vamos acompanhar a confirmação automaticamente.");
         } else if (status === "rejected") {
-          setFeedback("error", created.payment.statusDetail || "O pagamento com cartão foi recusado. Revise os dados e tente novamente.");
+          setFeedback(
+            "error",
+            getProviderStatusDetailLabel(created.payment.statusDetail) ||
+              "O pagamento com cartão foi recusado. Revise os dados e tente novamente."
+          );
         } else {
           setFeedback("error", "O pagamento com cartão expirou antes da confirmação. Tente novamente.");
         }

@@ -4,6 +4,7 @@ import {
   CARD_MIN_TOP_UP_BRL,
   PIX_MIN_TOP_UP_BRL,
   getTopUpMinimumAmount,
+  getProviderStatusDetailLabel,
   type TopUpMethod
 } from "../../lib/payments";
 import {
@@ -124,7 +125,7 @@ function getStatusGuidance(payment: PaymentSummary, nowMs: number) {
 
   if (payment.status === "rejected") {
     return (
-      payment.statusDetail ??
+      getProviderStatusDetailLabel(payment.statusDetail) ??
       "O provedor recusou o pagamento. Revise os dados e tente novamente."
     );
   }
@@ -143,7 +144,7 @@ function getStatusGuidance(payment: PaymentSummary, nowMs: number) {
   }
 
   return (
-    payment.statusDetail ??
+    getProviderStatusDetailLabel(payment.statusDetail) ??
     "Pagamento enviado. Estamos aguardando a resposta final do Mercado Pago."
   );
 }
@@ -391,7 +392,11 @@ export default function CreditManagementPanel({
       </div>
 
       {feedbackMessage ? (
-        <p className={`rounded-lg border px-3 py-2 text-sm ${getFeedbackClassName(feedbackTone)}`}>
+        <p
+          role={feedbackTone === "error" ? "alert" : "status"}
+          aria-live={feedbackTone === "error" ? "assertive" : "polite"}
+          className={`rounded-lg border px-3 py-2 text-sm ${getFeedbackClassName(feedbackTone)}`}
+        >
           {feedbackMessage}
         </p>
       ) : null}

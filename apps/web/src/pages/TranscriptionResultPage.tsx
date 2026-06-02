@@ -524,7 +524,11 @@ export default function TranscriptionResultPage() {
                         )}
 
                         {saveMessage && activeTab === "original" && (
-                          <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 font-body text-sm text-amber-700 dark:border-amber-900/50 dark:bg-amber-900/10 dark:text-amber-300">
+                          <p
+                            role="status"
+                            aria-live="polite"
+                            className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 font-body text-sm text-amber-700 dark:border-amber-900/50 dark:bg-amber-900/10 dark:text-amber-300"
+                          >
                             {saveMessage}
                           </p>
                         )}
@@ -789,7 +793,10 @@ export default function TranscriptionResultPage() {
                     )}
 
                     {error && (
-                      <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 font-body text-xs text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+                      <p
+                        role="alert"
+                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 font-body text-xs text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
+                      >
                         {error}
                       </p>
                     )}

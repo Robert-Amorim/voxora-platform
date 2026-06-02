@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import DashboardSidebar from "../components/dashboard/DashboardSidebar";
 import JobsTable from "../components/dashboard/JobsTable";
 import {
@@ -29,6 +29,7 @@ export default function TranscricoesPage() {
   const [hasMore, setHasMore] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [feedbackMessage, setFeedbackMessage] = useState("");
   const [feedbackTone, setFeedbackTone] = useState<FeedbackTone>("neutral");
   const [retryingJobIds, setRetryingJobIds] = useState<string[]>([]);
@@ -40,13 +41,13 @@ export default function TranscricoesPage() {
   );
 
   const visibleJobs = useMemo(() => {
-    const normalized = searchTerm.trim().toLowerCase();
+    const normalized = deferredSearchTerm.trim().toLowerCase();
     if (!normalized) return jobs;
     return jobs.filter((job) => {
       const name = getFileNameFromObjectKey(job.sourceObjectKey).toLowerCase();
       return name.includes(normalized) || job.language.toLowerCase().includes(normalized);
     });
-  }, [jobs, searchTerm]);
+  }, [jobs, deferredSearchTerm]);
 
   const setFeedback = useCallback((tone: FeedbackTone, message: string) => {
     if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
@@ -157,10 +158,14 @@ export default function TranscricoesPage() {
 
             <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
               <div className="relative w-full sm:w-64">
+                <label htmlFor="transcriptions-search" className="sr-only">
+                  Buscar arquivos
+                </label>
                 <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-slate-400">
                   search
                 </span>
                 <input
+                  id="transcriptions-search"
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -168,13 +173,13 @@ export default function TranscricoesPage() {
                   className="min-h-0 w-full rounded-lg border-none bg-slate-100 py-2 pl-9 pr-4 font-body text-sm transition-all focus:ring-2 focus:ring-primary dark:bg-slate-800 dark:placeholder:text-slate-500"
                 />
               </div>
-              <a
-                href="/transcricoes/nova"
+              <Link
+                to="/transcricoes/nova"
                 className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 font-display text-sm font-semibold text-white transition hover:opacity-90 sm:w-auto"
               >
                 <span className="material-symbols-outlined text-[18px]">add</span>
                 Nova transcrição
-              </a>
+              </Link>
             </div>
           </header>
 

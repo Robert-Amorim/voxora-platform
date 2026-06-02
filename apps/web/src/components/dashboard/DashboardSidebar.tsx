@@ -95,34 +95,58 @@ export default function DashboardSidebar({ user, activeMenu = "dashboard" }: Das
         </Link>
       </div>
 
-      <nav className="mt-4 grid grid-cols-2 gap-2 px-4 pb-4 sm:grid-cols-3 lg:flex lg:flex-1 lg:flex-col lg:gap-1 lg:pb-0">
-        <Link to="/dashboard" className={getNavClass(activeMenu === "dashboard")}>
+      <nav
+        aria-label="Navegação principal do painel"
+        className="mt-4 grid grid-cols-2 gap-2 px-4 pb-4 sm:grid-cols-3 lg:flex lg:flex-1 lg:flex-col lg:gap-1 lg:pb-0"
+      >
+        <Link
+          to="/dashboard"
+          aria-current={activeMenu === "dashboard" ? "page" : undefined}
+          className={getNavClass(activeMenu === "dashboard")}
+        >
           <span className="material-symbols-outlined shrink-0 text-[20px]">dashboard</span>
           <span className="min-w-0 text-sm leading-tight">Dashboard</span>
         </Link>
         <Link
           to="/transcricoes/nova"
+          aria-current={activeMenu === "new-transcription" ? "page" : undefined}
           className={getNavClass(activeMenu === "new-transcription")}
         >
           <span className="material-symbols-outlined shrink-0 text-[20px]">add_circle</span>
           <span className="min-w-0 text-sm leading-tight">Nova transcrição</span>
         </Link>
-        <Link to="/transcricoes" className={getNavClass(activeMenu === "transcriptions")}>
+        <Link
+          to="/transcricoes"
+          aria-current={activeMenu === "transcriptions" ? "page" : undefined}
+          className={getNavClass(activeMenu === "transcriptions")}
+        >
           <span className="material-symbols-outlined shrink-0 text-[20px]">description</span>
           <span className="min-w-0 text-sm leading-tight">Transcrições</span>
         </Link>
-        <Link to="/carteira" className={getNavClass(activeMenu === "wallet")}>
+        <Link
+          to="/carteira"
+          aria-current={activeMenu === "wallet" ? "page" : undefined}
+          className={getNavClass(activeMenu === "wallet")}
+        >
           <span className="material-symbols-outlined shrink-0 text-[20px]">account_balance_wallet</span>
           <span className="min-w-0 text-sm leading-tight">Carteira</span>
         </Link>
-        <Link to="/suporte" className={getNavClass(activeMenu === "support")}>
+        <Link
+          to="/suporte"
+          aria-current={activeMenu === "support" ? "page" : undefined}
+          className={getNavClass(activeMenu === "support")}
+        >
           <span className="material-symbols-outlined shrink-0 text-[20px]">support_agent</span>
           <span className="flex min-w-0 flex-wrap items-center gap-2">
             <span className="text-sm leading-tight">Suporte</span>
             <NotificationBadge count={unreadReplies} />
           </span>
         </Link>
-        <Link to="/perfil" className={getNavClass(activeMenu === "settings")}>
+        <Link
+          to="/perfil"
+          aria-current={activeMenu === "settings" ? "page" : undefined}
+          className={getNavClass(activeMenu === "settings")}
+        >
           <span className="material-symbols-outlined shrink-0 text-[20px]">settings</span>
           <span className="min-w-0 text-sm leading-tight">Configurações</span>
         </Link>

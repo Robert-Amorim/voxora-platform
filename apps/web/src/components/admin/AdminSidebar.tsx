@@ -70,19 +70,34 @@ export default function AdminSidebar({ user, activeMenu = "overview" }: AdminSid
         </div>
       </div>
 
-      <nav className="grid grid-cols-2 gap-2 px-4 py-4 lg:flex lg:flex-1 lg:flex-col lg:gap-1 lg:py-6">
-        <Link to="/admin" className={getNavClass(activeMenu === "overview")}>
+      <nav
+        aria-label="Navegação do painel interno"
+        className="grid grid-cols-2 gap-2 px-4 py-4 lg:flex lg:flex-1 lg:flex-col lg:gap-1 lg:py-6"
+      >
+        <Link
+          to="/admin"
+          aria-current={activeMenu === "overview" ? "page" : undefined}
+          className={getNavClass(activeMenu === "overview")}
+        >
           <span className="material-symbols-outlined shrink-0 text-[20px]">space_dashboard</span>
           <span className="min-w-0 leading-tight">Visão geral</span>
         </Link>
-        <Link to="/admin/tickets" className={getNavClass(activeMenu === "tickets")}>
+        <Link
+          to="/admin/tickets"
+          aria-current={activeMenu === "tickets" ? "page" : undefined}
+          className={getNavClass(activeMenu === "tickets")}
+        >
           <span className="material-symbols-outlined shrink-0 text-[20px]">mark_email_unread</span>
           <span className="flex min-w-0 flex-wrap items-center gap-2">
             <span className="leading-tight">Tickets</span>
             <NotificationBadge count={unreadForStaff} />
           </span>
         </Link>
-        <Link to="/admin/users" className={getNavClass(activeMenu === "users")}>
+        <Link
+          to="/admin/users"
+          aria-current={activeMenu === "users" ? "page" : undefined}
+          className={getNavClass(activeMenu === "users")}
+        >
           <span className="material-symbols-outlined shrink-0 text-[20px]">groups</span>
           <span className="min-w-0 leading-tight">Usuários</span>
         </Link>

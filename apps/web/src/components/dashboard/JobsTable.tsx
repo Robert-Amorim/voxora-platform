@@ -170,7 +170,11 @@ export default function JobsTable({
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
         {feedbackMessage ? (
-          <p className={`m-4 rounded-lg border px-3 py-2 text-xs ${getFeedbackClassName(feedbackTone)}`}>
+          <p
+            role={feedbackTone === "error" ? "alert" : "status"}
+            aria-live={feedbackTone === "error" ? "assertive" : "polite"}
+            className={`m-4 rounded-lg border px-3 py-2 text-xs ${getFeedbackClassName(feedbackTone)}`}
+          >
             {feedbackMessage}
           </p>
         ) : null}

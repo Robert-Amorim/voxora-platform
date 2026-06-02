@@ -220,6 +220,20 @@ export default function NewTranscriptionPage() {
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
                   onClick={() => fileInputRef.current?.click()}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      fileInputRef.current?.click();
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={
+                    selectedFile
+                      ? `Arquivo selecionado: ${selectedFile.name}. Pressione Enter para escolher outro arquivo.`
+                      : "Selecionar arquivo de áudio ou vídeo para transcrição"
+                  }
+                  aria-describedby={!selectedFile && !fileError ? "upload-help-text" : undefined}
                   className={`relative flex min-h-52 cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 transition-all ${
                     isDragging
                       ? "border-primary bg-primary/5 dark:bg-primary/10"
@@ -233,6 +247,7 @@ export default function NewTranscriptionPage() {
                   <input
                     ref={fileInputRef}
                     type="file"
+                    aria-label="Arquivo para transcrição"
                     accept=".mp3,.m4a,.wav,.mp4,.webm,.ogg,.mpeg,audio/*,video/*"
                     className="hidden"
                     onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
@@ -278,7 +293,7 @@ export default function NewTranscriptionPage() {
                         <p className="font-body font-semibold text-slate-600 dark:text-slate-300">
                           {isDragging ? "Solte o arquivo aqui" : "Arraste ou clique para selecionar"}
                         </p>
-                        <p className="mt-1 font-mono text-xs text-slate-400">
+                        <p id="upload-help-text" className="mt-1 font-mono text-xs text-slate-400">
                           MP3 · M4A · WAV · MP4 · WEBM · OGG · MPEG — até 500 MB
                         </p>
                       </div>
@@ -354,7 +369,14 @@ export default function NewTranscriptionPage() {
                       <span className="font-body text-xs text-slate-500">{statusMessage}</span>
                       <span className="font-mono text-xs font-bold text-primary">{uploadProgress}%</span>
                     </div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                    <div
+                      role="progressbar"
+                      aria-label="Progresso do envio"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={uploadProgress}
+                      className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"
+                    >
                       <div
                         className="h-full rounded-full bg-primary transition-all duration-300"
                         style={{ width: `${uploadProgress}%` }}

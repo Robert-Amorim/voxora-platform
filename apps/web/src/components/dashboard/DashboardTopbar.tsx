@@ -12,10 +12,14 @@ export default function DashboardTopbar({
       <h2 className="font-display text-xl font-bold tracking-tight">Dashboard</h2>
 
       <div className="group relative w-full sm:max-w-xs">
+        <label htmlFor="dashboard-search" className="sr-only">
+          Buscar arquivos
+        </label>
         <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-slate-400">
           search
         </span>
         <input
+          id="dashboard-search"
           type="text"
           value={searchTerm}
           onChange={(event) => onSearchTermChange(event.target.value)}

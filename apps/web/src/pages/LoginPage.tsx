@@ -58,6 +58,20 @@ export default function LoginPage() {
     void bootstrap();
   }, [navigate]);
 
+  useEffect(() => {
+    if (!TURNSTILE_SITE_KEY || mode !== "register") return;
+    if (window.turnstile || document.querySelector("script[data-voxora-turnstile]")) {
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+    script.async = true;
+    script.defer = true;
+    script.dataset.voxoraTurnstile = "true";
+    document.head.appendChild(script);
+  }, [mode, TURNSTILE_SITE_KEY]);
+
   // Render Turnstile widget when switching to register mode
   useEffect(() => {
     if (!TURNSTILE_SITE_KEY || mode !== "register") return;
@@ -94,7 +108,7 @@ export default function LoginPage() {
         setTurnstileToken("");
       }
     };
-  }, [mode]);
+  }, [mode, TURNSTILE_SITE_KEY]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

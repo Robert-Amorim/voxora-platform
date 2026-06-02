@@ -340,7 +340,11 @@ export default function SupportPage() {
                     </div>
 
                     {feedback ? (
-                      <p className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+                      <p
+                        role="status"
+                        aria-live="polite"
+                        className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-slate-600 dark:text-slate-300"
+                      >
                         {feedback}
                       </p>
                     ) : null}
@@ -459,7 +463,10 @@ export default function SupportPage() {
                     </div>
 
                     {detailError ? (
-                      <p className="mt-5 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                      <p
+                        role="alert"
+                        className="mt-5 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300"
+                      >
                         {detailError}
                       </p>
                     ) : null}
