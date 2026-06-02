@@ -53,7 +53,19 @@ function formatDownloadLabel(format: OutputFormat) {
       return "SRT";
     case "pdf":
       return "PDF";
+    case "docx":
+      return "DOCX";
   }
+}
+
+function getDownloadHelper(format: OutputFormat, available: boolean, translated = false) {
+  if (!available) {
+    return translated ? "Processamento em andamento" : "Aguardando regeneração";
+  }
+  if (format === "docx") {
+    return "Documento organizado para Word";
+  }
+  return translated ? "Versão derivada pronta" : "Arquivo pronto para exportação";
 }
 
 export default function TranscriptionResultPage() {
@@ -339,8 +351,17 @@ export default function TranscriptionResultPage() {
     }
   }
 
-  const originalDownloadFormats: OutputFormat[] = ["txt", "srt", "pdf"];
-  const translatedDownloadFormats: OutputFormat[] = ["txt", "pdf"];
+  const originalDownloadFormats: OutputFormat[] = ["docx", "txt", "srt", "pdf"];
+  const translatedDownloadFormats: OutputFormat[] = ["docx", "txt", "pdf"];
+
+  function isDownloadAvailable(format: OutputFormat, variant: TranscriptVariant) {
+    if (!job) return false;
+    if (format === "docx") {
+      const transcript = variant === "original" ? originalTranscript : translatedTranscript;
+      return Boolean(transcript && transcript.status === "ready" && transcript.segments.length > 0);
+    }
+    return hasOutputFormat(job, format, variant);
+  }
 
   return (
     <main className="font-body text-slate-900 antialiased dark:text-slate-100">
@@ -734,7 +755,7 @@ export default function TranscriptionResultPage() {
                       </p>
                       <div className="space-y-2">
                         {originalDownloadFormats.map((format) => {
-                          const available = hasOutputFormat(job, format, "original");
+                          const available = isDownloadAvailable(format, "original");
                           const key = `original-${format}`;
                           return (
                             <button
@@ -749,7 +770,7 @@ export default function TranscriptionResultPage() {
                                   {formatDownloadLabel(format)} original
                                 </p>
                                 <p className="font-body text-xs text-slate-400">
-                                  {available ? "Arquivo pronto para exportação" : "Aguardando regeneração"}
+                                  {getDownloadHelper(format, available)}
                                 </p>
                               </div>
                               {downloadingKey === key ? <Spinner size="sm" /> : <span className="material-symbols-outlined text-[18px] text-slate-400">download</span>}
@@ -766,7 +787,7 @@ export default function TranscriptionResultPage() {
                         </p>
                         <div className="space-y-2">
                           {translatedDownloadFormats.map((format) => {
-                            const available = hasOutputFormat(job, format, "translated");
+                            const available = isDownloadAvailable(format, "translated");
                             const key = `translated-${format}`;
                             return (
                               <button
@@ -781,7 +802,7 @@ export default function TranscriptionResultPage() {
                                     {formatDownloadLabel(format)} traduzido
                                   </p>
                                   <p className="font-body text-xs text-slate-400">
-                                    {available ? "Versão derivada pronta" : "Processamento em andamento"}
+                                    {getDownloadHelper(format, available, true)}
                                   </p>
                                 </div>
                                 {downloadingKey === key ? <Spinner size="sm" /> : <span className="material-symbols-outlined text-[18px] text-slate-400">download</span>}

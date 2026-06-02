@@ -1,4 +1,12 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import {
+  AlignmentType,
+  Document,
+  HeadingLevel,
+  Packer,
+  Paragraph,
+  TextRun
+} from "docx";
 
 export type TranscriptArtifactSegment = {
   segmentIndex: number;
@@ -99,6 +107,20 @@ function joinSegmentsAsProse(segments: TranscriptArtifactSegment[]) {
   }
 
   return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
+function docxText(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function metadataParagraph(label: string, value: string) {
+  return new Paragraph({
+    spacing: { after: 90 },
+    children: [
+      new TextRun({ text: `${label}: `, bold: true }),
+      new TextRun(value)
+    ]
+  });
 }
 
 export function renderTranscriptText(params: {
@@ -215,4 +237,87 @@ export async function renderPdfBuffer(params: {
   }
 
   return Buffer.from(await pdf.save());
+}
+
+export async function renderDocxBuffer(params: {
+  title: string;
+  sourceObjectKey?: string;
+  variantLabel: string;
+  language: string;
+  durationSeconds: number | null;
+  segments: TranscriptArtifactSegment[];
+}) {
+  const prose = joinSegmentsAsProse(params.segments);
+  const children: Paragraph[] = [
+    new Paragraph({
+      heading: HeadingLevel.TITLE,
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 220 },
+      children: [new TextRun(params.title)]
+    }),
+    metadataParagraph("Variante", params.variantLabel),
+    metadataParagraph("Idioma", params.language),
+    metadataParagraph("Duracao", formatDuration(params.durationSeconds))
+  ];
+
+  if (params.sourceObjectKey) {
+    children.push(metadataParagraph("Arquivo de origem", params.sourceObjectKey));
+  }
+
+  children.push(
+    new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      spacing: { before: 280, after: 160 },
+      children: [new TextRun("Transcricao corrida")]
+    }),
+    new Paragraph({
+      spacing: { after: 220 },
+      children: [
+        new TextRun(
+          prose || "Nao ha texto corrido disponivel para esta transcricao."
+        )
+      ]
+    }),
+    new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      spacing: { before: 260, after: 160 },
+      children: [new TextRun("Segmentos com horarios")]
+    })
+  );
+
+  for (const segment of params.segments) {
+    const start = segment.startSec !== null ? formatDuration(segment.startSec) : "--:--:--";
+    const end = segment.endSec !== null ? formatDuration(segment.endSec) : "--:--:--";
+    const speaker = segment.speakerLabel ?? `Segmento ${segment.segmentIndex + 1}`;
+    children.push(
+      new Paragraph({
+        spacing: { before: 140, after: 70 },
+        children: [
+          new TextRun({
+            text: `${speaker} · ${start} - ${end}`,
+            bold: true,
+            color: "1D4ED8"
+          })
+        ]
+      }),
+      new Paragraph({
+        spacing: { after: 100 },
+        children: [new TextRun(docxText(segment.text))]
+      })
+    );
+  }
+
+  const document = new Document({
+    creator: "Voxora",
+    description: "Transcricao exportada pela Voxora",
+    title: params.title,
+    sections: [
+      {
+        properties: {},
+        children
+      }
+    ]
+  });
+
+  return Packer.toBuffer(document);
 }

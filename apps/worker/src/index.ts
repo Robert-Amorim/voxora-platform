@@ -27,6 +27,7 @@ import {
   type WhisperSegment
 } from "./lib/whisper";
 import {
+  renderDocxBuffer,
   renderPdfBuffer,
   renderSrtText,
   renderTranscriptText,
@@ -343,6 +344,8 @@ function getOutputContentType(format: OutputFormat) {
       return "application/x-subrip; charset=utf-8";
     case "pdf":
       return "application/pdf";
+    case "docx":
+      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     case "txt":
     default:
       return "text/plain; charset=utf-8";
@@ -545,6 +548,21 @@ async function publishOutputsForTranscript(params: {
     objectKey: getOutputObjectKey(params.userId, params.jobId, params.variant, "srt"),
     content: srtContent,
     sizeBytes: Buffer.byteLength(srtContent, "utf8")
+  });
+
+  const docxContent = await renderDocxBuffer({
+    title: `${variantLabel} · ${params.jobId}`,
+    sourceObjectKey: params.sourceObjectKey,
+    variantLabel,
+    language: params.language,
+    durationSeconds: params.durationSeconds,
+    segments: artifactSegments
+  });
+  outputs.push({
+    format: "docx",
+    objectKey: getOutputObjectKey(params.userId, params.jobId, params.variant, "docx"),
+    content: docxContent,
+    sizeBytes: docxContent.byteLength
   });
 
   if (params.generatePdf) {

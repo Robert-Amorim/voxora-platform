@@ -22,7 +22,7 @@ export const LEDGER_TYPES = [
   "adjustment"
 ] as const;
 
-export const OUTPUT_FORMATS = ["txt", "srt", "pdf"] as const;
+export const OUTPUT_FORMATS = ["txt", "srt", "pdf", "docx"] as const;
 export const TRANSCRIPT_VARIANTS = ["original", "translated"] as const;
 export const TRANSCRIPT_KINDS = ["transcript", "translation"] as const;
 export const TRANSCRIPT_STATUSES = [

@@ -8,7 +8,7 @@ export const JOB_STATUSES = [
 ] as const;
 
 export const PAYMENT_STATUSES = ["pending", "approved", "rejected", "expired"] as const;
-export const OUTPUT_FORMATS = ["txt", "srt", "pdf"] as const;
+export const OUTPUT_FORMATS = ["txt", "srt", "pdf", "docx"] as const;
 export const TRANSCRIPT_VARIANTS = ["original", "translated"] as const;
 export const TRANSCRIPT_STATUSES = [
   "pending",

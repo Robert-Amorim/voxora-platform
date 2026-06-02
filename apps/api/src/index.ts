@@ -29,6 +29,7 @@ import {
   hasAnyOciConfig
 } from "./lib/object-storage";
 import { createMercadoPagoClient } from "./lib/mercado-pago";
+import { renderTranscriptDocxBuffer } from "./lib/transcript-docx";
 
 const envCandidates = [
   resolve(process.cwd(), ".env"),
@@ -925,7 +926,7 @@ type PublicSupportSummary = {
   unreadReplies: number;
 };
 type PublicTranscriptionOutput = {
-  format: "txt" | "srt" | "pdf";
+  format: "txt" | "srt" | "pdf" | "docx";
   variant: "original" | "translated";
   language: string | null;
   objectKey: string;
@@ -1211,7 +1212,7 @@ function parseOptionalDecimal(value: string | null) {
 }
 
 function serializeOutput(output: {
-  format: "txt" | "srt" | "pdf";
+  format: "txt" | "srt" | "pdf" | "docx";
   variant: "original" | "translated";
   language: string | null;
   objectKey: string;
@@ -5225,6 +5226,61 @@ async function registerRoutes() {
         }
       });
       if (!output) {
+        if (query.format === "docx") {
+          const job = await prisma.transcriptionJob.findFirst({
+            where: {
+              id: params.id,
+              userId: request.user.sub
+            },
+            include: {
+              transcripts: {
+                where: { variant: query.variant },
+                include: { segments: true }
+              }
+            }
+          });
+          const transcript = job?.transcripts[0] ?? null;
+          if (!job || !transcript || transcript.status !== "ready") {
+            return reply.code(404).send({
+              message: "Output not available for this format."
+            });
+          }
+
+          const segments = transcript.segments
+            .filter((segment) => segment.revision === transcript.revision)
+            .sort((a, b) => a.segmentIndex - b.segmentIndex)
+            .map((segment) => ({
+              segmentIndex: segment.segmentIndex,
+              startSec: segment.startSec ? Number(segment.startSec.toString()) : null,
+              endSec: segment.endSec ? Number(segment.endSec.toString()) : null,
+              text: segment.text,
+              speakerLabel: segment.speakerLabel
+            }))
+            .filter((segment) => segment.text.trim().length > 0);
+
+          if (segments.length === 0) {
+            return reply.code(404).send({
+              message: "Output not available for this format."
+            });
+          }
+
+          const variantLabel = query.variant === "original" ? "Original" : "Traduzido";
+          const docxContent = await renderTranscriptDocxBuffer({
+            title: `${variantLabel} · ${job.id}`,
+            sourceObjectKey: job.sourceObjectKey,
+            variantLabel,
+            language: transcript.language,
+            durationSeconds: job.durationSeconds,
+            segments
+          });
+          reply.type("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+          reply.header(
+            "content-disposition",
+            `attachment; filename="transcription-${job.id}-${query.variant}.docx"`
+          );
+          return reply.send(docxContent);
+        }
+
         return reply.code(404).send({
           message: "Output not available for this format."
         });
@@ -5258,6 +5314,8 @@ async function registerRoutes() {
         reply.type("application/x-subrip; charset=utf-8");
       } else if (query.format === "pdf") {
         reply.type("application/pdf");
+      } else if (query.format === "docx") {
+        reply.type("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
       } else {
         reply.type("text/plain; charset=utf-8");
       }

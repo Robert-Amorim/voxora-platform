@@ -41,7 +41,19 @@ function formatDownloadLabel(format: OutputFormat) {
       return "SRT";
     case "pdf":
       return "PDF";
+    case "docx":
+      return "DOCX";
   }
+}
+
+function getDownloadHelper(format: OutputFormat, available: boolean) {
+  if (!available) {
+    return "Aguardando artefato.";
+  }
+  if (format === "docx") {
+    return "Documento organizado para Word.";
+  }
+  return "Arquivo publicado.";
 }
 
 function PipelineStatusRow(props: {
@@ -172,8 +184,19 @@ export default function TranscriptionDetailPage() {
   const previewSegments = originalSegments.slice(0, 5);
   const hasTranslatedVariant = Boolean(job?.translationTargetLanguage);
   const etaInfo = job ? getTranscriptionEtaInfo(job) : null;
-  const originalDownloadFormats: OutputFormat[] = ["txt", "srt", "pdf"];
-  const translatedDownloadFormats: OutputFormat[] = ["txt", "pdf"];
+  const originalDownloadFormats: OutputFormat[] = ["docx", "txt", "srt", "pdf"];
+  const translatedDownloadFormats: OutputFormat[] = ["docx", "txt", "pdf"];
+
+  function isDownloadAvailable(format: OutputFormat, variant: TranscriptVariant) {
+    if (!job) return false;
+    if (format === "docx") {
+      const transcript = variant === "original"
+        ? job.transcripts.original
+        : job.transcripts.translated;
+      return Boolean(transcript && transcript.status === "ready" && transcript.segments.length > 0);
+    }
+    return hasOutputFormat(job, format, variant);
+  }
 
   return (
     <main className="font-body text-slate-900 antialiased dark:text-slate-100">
@@ -438,7 +461,7 @@ export default function TranscriptionDetailPage() {
                       </p>
                       <div className="space-y-2">
                         {originalDownloadFormats.map((format) => {
-                          const available = hasOutputFormat(job, format, "original");
+                          const available = isDownloadAvailable(format, "original");
                           const key = `original-${format}`;
                           return (
                             <button
@@ -453,7 +476,7 @@ export default function TranscriptionDetailPage() {
                                   {formatDownloadLabel(format)} original
                                 </p>
                                 <p className="font-body text-xs text-slate-400">
-                                  {available ? "Arquivo publicado." : "Aguardando artefato."}
+                                  {getDownloadHelper(format, available)}
                                 </p>
                               </div>
                               {downloadingKey === key ? (
@@ -476,7 +499,7 @@ export default function TranscriptionDetailPage() {
                         </p>
                         <div className="space-y-2">
                           {translatedDownloadFormats.map((format) => {
-                            const available = hasOutputFormat(job, format, "translated");
+                            const available = isDownloadAvailable(format, "translated");
                             const key = `translated-${format}`;
                             return (
                               <button
@@ -491,7 +514,11 @@ export default function TranscriptionDetailPage() {
                                     {formatDownloadLabel(format)} traduzido
                                   </p>
                                   <p className="font-body text-xs text-slate-400">
-                                    {available ? "Versão derivada publicada." : "Ainda em processamento."}
+                                    {format === "docx" && available
+                                      ? "Documento organizado para Word."
+                                      : available
+                                        ? "Versão derivada publicada."
+                                        : "Ainda em processamento."}
                                   </p>
                                 </div>
                                 {downloadingKey === key ? (
