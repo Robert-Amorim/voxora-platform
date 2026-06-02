@@ -111,9 +111,18 @@ export default function LedgerPanel({
 
       <div className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
         {items.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-500 dark:border-slate-700">
-            Ainda não há movimentações na carteira.
-          </p>
+          <div className="rounded-lg border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-700">
+            <div className="mx-auto flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <span className="material-symbols-outlined text-[22px]">receipt_long</span>
+            </div>
+            <p className="mt-3 font-semibold text-slate-700 dark:text-slate-200">
+              Nenhuma movimentação ainda.
+            </p>
+            <p className="mx-auto mt-2 max-w-md">
+              Quando você recarregar créditos ou concluir uma transcrição,
+              entradas e saídas aparecerão neste histórico.
+            </p>
+          </div>
         ) : (
           <div className="space-y-4">
             {items.map((item) => (

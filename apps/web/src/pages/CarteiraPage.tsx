@@ -349,8 +349,30 @@ export default function CarteiraPage() {
 
           {loadState === "ready" && (
             <div className="flex-1 p-4 sm:p-6 lg:overflow-y-auto lg:p-8">
-              <div className="grid gap-8 xl:grid-cols-12">
-                <div className="xl:col-span-7">
+              <div className="grid gap-6 xl:grid-cols-12">
+                <div className="space-y-6 xl:col-span-7">
+                  <section className="rounded-2xl border border-primary/20 bg-primary/10 p-5 dark:bg-primary/5">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="font-display text-xs font-semibold uppercase tracking-[0.24em] text-primary">
+                          Próxima ação
+                        </p>
+                        <h3 className="mt-2 font-display text-xl font-black">
+                          Adicione créditos para iniciar transcrições
+                        </h3>
+                        <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
+                          Gere um PIX ou pague com cartão. Assim que o pagamento for aprovado,
+                          o saldo aparece aqui e a transcrição já pode ser enviada.
+                        </p>
+                      </div>
+                      <a
+                        href="#creditos"
+                        className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary/90"
+                      >
+                        Recarregar agora
+                      </a>
+                    </div>
+                  </section>
                   <LedgerPanel
                     ledger={ledger}
                     total={ledgerTotal}
@@ -364,14 +386,14 @@ export default function CarteiraPage() {
                   <CreditManagementPanel
                     amountInput={topUpAmountInput}
                     onAmountInputChange={setTopUpAmountInput}
-                  onCreatePixPayment={handleCreatePixPayment}
-                  onCreateCardPayment={handleCreateCardPayment}
-                  onCancelPixPayment={handleCancelPixPayment}
-                  payerEmail={user?.email ?? null}
-                  isCreatingPayment={isCreatingPayment}
-                  isCreatingCardPayment={isCreatingCardPayment}
-                  isCancellingPixPayment={isCancellingPixPayment}
-                  isRefreshingData={isRefreshingData}
+                    onCreatePixPayment={handleCreatePixPayment}
+                    onCreateCardPayment={handleCreateCardPayment}
+                    onCancelPixPayment={handleCancelPixPayment}
+                    payerEmail={user?.email ?? null}
+                    isCreatingPayment={isCreatingPayment}
+                    isCreatingCardPayment={isCreatingCardPayment}
+                    isCancellingPixPayment={isCancellingPixPayment}
+                    isRefreshingData={isRefreshingData}
                     activePix={activePixPayment}
                     onConfirmMockPayment={handleConfirmMockPayment}
                     isConfirmingMockPayment={isConfirmingMockPayment}

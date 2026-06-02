@@ -187,6 +187,11 @@ export default function NewTranscriptionPage() {
   }
 
   const canSubmit = !!selectedFile && !fileError && !isSubmitting;
+  const nextStepMessage = selectedFile
+    ? fileError
+      ? "Escolha outro arquivo para continuar."
+      : "Tudo pronto. Clique em iniciar para enviar o arquivo e criar a transcrição."
+    : "Escolha um arquivo para liberar o envio.";
 
   return (
     <main className="font-body text-slate-900 antialiased dark:text-slate-100">
@@ -358,6 +363,28 @@ export default function NewTranscriptionPage() {
                           </span>
                         </div>
                       ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className={`rounded-xl border px-4 py-3 text-sm ${
+                    selectedFile && !fileError
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                      : fileError
+                        ? "border-red-500/30 bg-red-500/10 text-red-300"
+                        : "border-primary/20 bg-primary/10 text-slate-300"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="material-symbols-outlined mt-0.5 text-[18px] text-primary">
+                      {selectedFile && !fileError ? "task_alt" : fileError ? "error" : "info"}
+                    </span>
+                    <div>
+                      <p className="font-semibold">Próximo passo</p>
+                      <p className="mt-1 text-slate-500 dark:text-slate-300">{nextStepMessage}</p>
                     </div>
                   </div>
                 </div>

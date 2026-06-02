@@ -110,6 +110,12 @@ function getFeedbackClassName(tone: CreditManagementPanelProps["feedbackTone"]) 
   return "border-slate-300 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-300";
 }
 
+function getFeedbackIcon(tone: CreditManagementPanelProps["feedbackTone"]) {
+  if (tone === "success") return "task_alt";
+  if (tone === "error") return "error";
+  return "sync";
+}
+
 function getPaymentMethodLabel(method: PaymentSummary["method"]) {
   return method === "credit_card" ? "Cartao" : "PIX";
 }
@@ -392,13 +398,31 @@ export default function CreditManagementPanel({
       </div>
 
       {feedbackMessage ? (
-        <p
+        <div
           role={feedbackTone === "error" ? "alert" : "status"}
           aria-live={feedbackTone === "error" ? "assertive" : "polite"}
-          className={`rounded-lg border px-3 py-2 text-sm ${getFeedbackClassName(feedbackTone)}`}
+          className={`rounded-lg border px-3 py-3 text-sm ${getFeedbackClassName(feedbackTone)}`}
         >
-          {feedbackMessage}
-        </p>
+          <div className="flex items-start gap-3">
+            <span
+              className={`material-symbols-outlined mt-0.5 text-[18px] ${
+                feedbackTone === "neutral" ? "animate-spin" : ""
+              }`}
+            >
+              {getFeedbackIcon(feedbackTone)}
+            </span>
+            <div>
+              <p className="font-semibold">
+                {feedbackTone === "success"
+                  ? "Ação concluída"
+                  : feedbackTone === "error"
+                    ? "Atenção necessária"
+                    : "Processando"}
+              </p>
+              <p className="mt-1">{feedbackMessage}</p>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {selectedPayment ? (
@@ -500,8 +524,14 @@ export default function CreditManagementPanel({
             ) : null}
           </article>
         ) : (
-          <div className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-            Gere um PIX para liberar o QR Code com prazo de pagamento.
+          <div className="rounded-lg border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+            <p className="font-semibold text-slate-700 dark:text-slate-200">
+              Nenhum PIX ativo no momento.
+            </p>
+            <p className="mt-2">
+              Informe o valor e clique em Gerar PIX. O QR Code e o código copia-e-cola
+              aparecerão aqui assim que forem criados.
+            </p>
           </div>
         )
       ) : (
@@ -527,9 +557,14 @@ export default function CreditManagementPanel({
         </div>
 
         {payments.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-xs text-slate-500 dark:border-slate-700">
-            Ainda não há pagamentos registrados.
-          </p>
+          <div className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-xs text-slate-500 dark:border-slate-700">
+            <p className="font-semibold text-slate-700 dark:text-slate-200">
+              Sem pagamentos ainda.
+            </p>
+            <p className="mt-1">
+              Depois de gerar PIX ou pagar com cartão, cada tentativa aparece aqui com o status.
+            </p>
+          </div>
         ) : (
           <div className="space-y-2">
             {payments.map((payment) => (

@@ -78,7 +78,11 @@ export default function SupportPage() {
       return;
     }
 
-    setLoadState("loading");
+    if (loadState === "ready") {
+      setIsRefreshing(true);
+    } else {
+      setLoadState("loading");
+    }
     setPageError("");
     setSupportWarning("");
 
@@ -153,6 +157,8 @@ export default function SupportPage() {
       }
       setPageError(getErrorMessage(error, "Não foi possível carregar seus tickets."));
       setLoadState("error");
+    } finally {
+      setIsRefreshing(false);
     }
   }
 
@@ -211,6 +217,7 @@ export default function SupportPage() {
     }
 
     setIsCreating(true);
+    setFeedback("Criando ticket e enviando sua mensagem...");
 
     try {
       const created = await createSupportTicket({
@@ -236,11 +243,13 @@ export default function SupportPage() {
     if (!selectedThread) return;
     setIsSending(true);
     setDetailError("");
+    setFeedback("Enviando resposta...");
 
     try {
       const updated = await createSupportTicketMessage(selectedThread.id, { body: replyBody });
       setSelectedThread(updated.thread);
       setReplyBody("");
+      setFeedback("Mensagem enviada. O histórico do ticket foi atualizado.");
       await bootstrap();
     } catch (error) {
       setDetailError(getErrorMessage(error, "Não foi possível enviar sua mensagem."));
@@ -318,7 +327,7 @@ export default function SupportPage() {
             ) : null}
             <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
               <div className="space-y-6">
-                <article className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+                <article id="novo-ticket" className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
                   <div className="mb-5">
                     <p className="text-xs uppercase tracking-[0.24em] text-primary/80">Novo ticket</p>
                     <h3 className="mt-2 font-display text-xl font-black">Fale com a equipe</h3>
@@ -383,9 +392,16 @@ export default function SupportPage() {
                     <button
                       type="submit"
                       disabled={isCreating}
-                      className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-70"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-70"
                     >
-                      {isCreating ? "Criando ticket..." : "Abrir ticket"}
+                      {isCreating ? (
+                        <>
+                          <Spinner size="sm" />
+                          Criando ticket...
+                        </>
+                      ) : (
+                        "Abrir ticket"
+                      )}
                     </button>
                   </form>
                 </article>
@@ -399,15 +415,22 @@ export default function SupportPage() {
                     <button
                       type="button"
                       onClick={() => void bootstrap()}
-                      className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                      disabled={isRefreshing}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
                     >
-                      Atualizar
+                      {isRefreshing ? <Spinner size="sm" /> : null}
+                      {isRefreshing ? "Atualizando..." : "Atualizar"}
                     </button>
                   </div>
 
                   {tickets.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                      Você ainda não abriu nenhum ticket.
+                    <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                      <p className="font-semibold text-slate-700 dark:text-slate-200">
+                        Nenhum ticket aberto ainda.
+                      </p>
+                      <p className="mt-2">
+                        Quando abrir um chamado, ele aparece aqui com status e respostas da equipe.
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -527,14 +550,23 @@ export default function SupportPage() {
                     )}
                   </div>
                 ) : (
-                  <div className="flex min-h-[480px] flex-col items-center justify-center text-center">
+                  <div className="flex min-h-[420px] flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-800 bg-slate-900/30 px-6 text-center">
                     <div className="flex size-16 items-center justify-center rounded-full bg-primary/10 text-primary">
                       <span className="material-symbols-outlined text-[32px]">mark_email_unread</span>
                     </div>
-                    <h3 className="mt-5 font-display text-2xl font-black">Selecione um ticket</h3>
+                    <h3 className="mt-5 font-display text-2xl font-black">
+                      Abra seu primeiro chamado
+                    </h3>
                     <p className="mt-2 max-w-md text-sm text-slate-500 dark:text-slate-400">
-                      Escolha um ticket no histórico ou abra um novo chamado para iniciar o atendimento.
+                      Use o formulário ao lado para contar o que aconteceu. Depois disso,
+                      as respostas e atualizações aparecem neste painel.
                     </p>
+                    <a
+                      href="#novo-ticket"
+                      className="mt-6 inline-flex items-center justify-center rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition hover:bg-primary/90"
+                    >
+                      Preencher chamado
+                    </a>
                   </div>
                 )}
               </article>
