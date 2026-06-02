@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import TranscriptionProgressNotice from "../components/common/TranscriptionProgressNotice";
 import DashboardSidebar from "../components/dashboard/DashboardSidebar";
 import Spinner from "../components/common/Spinner";
 import {
@@ -19,7 +20,6 @@ import {
   getFileNameFromObjectKey,
   getStatusLabel,
   getStatusTone,
-  getTranscriptionEtaInfo,
   getTranscriptStatusLabel,
   getTranscriptStatusTone,
   hasOutputFormat
@@ -216,7 +216,6 @@ export default function TranscriptionDetailPage() {
   const originalSegments = job?.transcripts.original?.segments ?? [];
   const previewSegments = originalSegments.slice(0, 5);
   const hasTranslatedVariant = Boolean(job?.translationTargetLanguage);
-  const etaInfo = job ? getTranscriptionEtaInfo(job) : null;
   const originalDownloadFormats: OutputFormat[] = ["docx", "txt", "srt", "pdf"];
   const translatedDownloadFormats: OutputFormat[] = ["docx", "txt", "pdf"];
   const primaryDownloadFormat: OutputFormat = "docx";
@@ -289,6 +288,8 @@ export default function TranscriptionDetailPage() {
 
             {loadState === "ready" && job && (
               <div className="space-y-6">
+                <TranscriptionProgressNotice job={job} fileName={fileName} />
+
                 <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-gradient-to-br from-white via-white to-primary/5 shadow-sm dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-primary/10">
                   <div className="grid gap-6 px-5 py-6 sm:px-8 lg:grid-cols-[1.2fr_0.8fr]">
                     <div className="space-y-4">
@@ -325,19 +326,6 @@ export default function TranscriptionDetailPage() {
                     </div>
 
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                      {etaInfo ? (
-                        <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 dark:bg-primary/10">
-                          <p className="font-display text-[10px] font-semibold uppercase tracking-[0.22em] text-primary/80">
-                            Previsão de conclusão
-                          </p>
-                          <p className="mt-1 font-body text-sm font-semibold text-slate-800 dark:text-slate-100">
-                            {etaInfo.headline}
-                          </p>
-                          <p className="mt-2 font-body text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-                            {etaInfo.helper}
-                          </p>
-                        </div>
-                      ) : null}
                       {[
                         { label: "Duração", value: formatDuration(job.durationSeconds) },
                         { label: "Segmentos ativos", value: String(originalSegments.length) },

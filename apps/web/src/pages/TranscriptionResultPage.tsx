@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import TranscriptionProgressNotice from "../components/common/TranscriptionProgressNotice";
 import DashboardSidebar from "../components/dashboard/DashboardSidebar";
 import Spinner from "../components/common/Spinner";
 import {
@@ -20,6 +21,7 @@ import {
   formatTimestampLabel,
   getFileNameFromObjectKey,
   getStatusLabel,
+  getTranscriptionEtaInfo,
   getTranscriptStatusLabel,
   getTranscriptStatusTone,
   hasOutputFormat
@@ -177,6 +179,7 @@ export default function TranscriptionResultPage() {
   const translatedTranscript = job?.transcripts.translated ?? null;
   const fileName = job ? getFileNameFromObjectKey(job.sourceObjectKey) : "";
   const hasTranslatedVariant = Boolean(job?.translationTargetLanguage);
+  const etaInfo = job ? getTranscriptionEtaInfo(job) : null;
   const translationStatus = job?.translatedTranscriptStatus ?? null;
   const originalStatus = job?.originalTranscriptStatus ?? null;
 
@@ -454,6 +457,10 @@ export default function TranscriptionResultPage() {
 
             {loadState === "ready" && job && (
               <div className="space-y-6">
+                {(PROCESSING_STATUSES.includes(job.status) || etaInfo) && (
+                  <TranscriptionProgressNotice job={job} fileName={fileName} />
+                )}
+
                 <div className="grid gap-4 md:grid-cols-3">
                   {[
                     {
