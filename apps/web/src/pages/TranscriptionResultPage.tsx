@@ -386,6 +386,13 @@ export default function TranscriptionResultPage() {
 
   const originalDownloadFormats: OutputFormat[] = ["docx", "txt", "srt", "pdf"];
   const translatedDownloadFormats: OutputFormat[] = ["docx", "txt", "pdf"];
+  const primaryDownloadFormat: OutputFormat = "docx";
+  const originalSecondaryDownloadFormats = originalDownloadFormats.filter(
+    (format) => format !== primaryDownloadFormat
+  );
+  const translatedSecondaryDownloadFormats = translatedDownloadFormats.filter(
+    (format) => format !== primaryDownloadFormat
+  );
 
   function isDownloadAvailable(format: OutputFormat, variant: TranscriptVariant) {
     if (!job) return false;
@@ -786,30 +793,53 @@ export default function TranscriptionResultPage() {
                       <p className="mb-4 font-display text-[10px] font-semibold uppercase tracking-[0.25em] text-slate-400">
                         Downloads do original
                       </p>
-                      <div className="space-y-2">
-                        {originalDownloadFormats.map((format) => {
-                          const available = isDownloadAvailable(format, "original");
-                          const key = `original-${format}`;
+                      <div className="space-y-4">
+                        {(() => {
+                          const available = isDownloadAvailable(primaryDownloadFormat, "original");
+                          const key = `original-${primaryDownloadFormat}`;
                           return (
                             <button
-                              key={format}
                               type="button"
                               disabled={!available || downloadingKey !== null}
-                              onClick={() => void handleDownload(format, "original")}
-                              className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-left transition hover:border-primary/30 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:hover:border-primary/30 dark:hover:bg-primary/5"
+                              onClick={() => void handleDownload(primaryDownloadFormat, "original")}
+                              className="flex w-full items-center justify-between rounded-2xl border border-primary/30 bg-primary/10 px-4 py-4 text-left transition hover:border-primary/50 hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-40 dark:border-primary/40 dark:bg-primary/15"
                             >
                               <div>
-                                <p className="font-body text-sm font-semibold text-slate-700 dark:text-slate-200">
-                                  {formatDownloadLabel(format)} original
+                                <p className="font-body text-sm font-bold text-slate-800 dark:text-slate-100">
+                                  Baixar DOCX original
                                 </p>
-                                <p className="font-body text-xs text-slate-400">
-                                  {getDownloadHelper(format, available)}
+                                <p className="font-body text-xs text-slate-500 dark:text-slate-400">
+                                  Recomendado: revisado para leitura e editável no Word.
                                 </p>
                               </div>
-                              {downloadingKey === key ? <Spinner size="sm" /> : <span className="material-symbols-outlined text-[18px] text-slate-400">download</span>}
+                              {downloadingKey === key ? <Spinner size="sm" /> : <span className="material-symbols-outlined text-[20px] text-primary">download</span>}
                             </button>
                           );
-                        })}
+                        })()}
+
+                        <div>
+                          <p className="mb-2 font-display text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+                            Outros formatos
+                          </p>
+                          <div className="grid grid-cols-3 gap-2">
+                            {originalSecondaryDownloadFormats.map((format) => {
+                              const available = isDownloadAvailable(format, "original");
+                              const key = `original-${format}`;
+                              return (
+                                <button
+                                  key={format}
+                                  type="button"
+                                  disabled={!available || downloadingKey !== null}
+                                  onClick={() => void handleDownload(format, "original")}
+                                  className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 font-body text-xs font-semibold text-slate-600 transition hover:border-primary/30 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:border-primary/30 dark:hover:bg-primary/5"
+                                  title={getDownloadHelper(format, available)}
+                                >
+                                  {downloadingKey === key ? <Spinner size="sm" /> : formatDownloadLabel(format)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </div>
                     </div>
 
@@ -818,30 +848,53 @@ export default function TranscriptionResultPage() {
                         <p className="mb-4 font-display text-[10px] font-semibold uppercase tracking-[0.25em] text-slate-400">
                           Downloads da tradução
                         </p>
-                        <div className="space-y-2">
-                          {translatedDownloadFormats.map((format) => {
-                            const available = isDownloadAvailable(format, "translated");
-                            const key = `translated-${format}`;
+                        <div className="space-y-4">
+                          {(() => {
+                            const available = isDownloadAvailable(primaryDownloadFormat, "translated");
+                            const key = `translated-${primaryDownloadFormat}`;
                             return (
                               <button
-                                key={format}
                                 type="button"
                                 disabled={!available || downloadingKey !== null}
-                                onClick={() => void handleDownload(format, "translated")}
-                                className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-left transition hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:hover:border-emerald-600/40 dark:hover:bg-emerald-900/10"
+                                onClick={() => void handleDownload(primaryDownloadFormat, "translated")}
+                                className="flex w-full items-center justify-between rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-4 text-left transition hover:border-emerald-400 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-emerald-700/60 dark:bg-emerald-900/20 dark:hover:bg-emerald-900/30"
                               >
                                 <div>
-                                  <p className="font-body text-sm font-semibold text-slate-700 dark:text-slate-200">
-                                    {formatDownloadLabel(format)} traduzido
+                                  <p className="font-body text-sm font-bold text-slate-800 dark:text-slate-100">
+                                    Baixar DOCX traduzido
                                   </p>
-                                  <p className="font-body text-xs text-slate-400">
-                                    {getDownloadHelper(format, available, true)}
+                                  <p className="font-body text-xs text-slate-500 dark:text-slate-400">
+                                    Recomendado: tradução revisada para leitura no Word.
                                   </p>
                                 </div>
-                                {downloadingKey === key ? <Spinner size="sm" /> : <span className="material-symbols-outlined text-[18px] text-slate-400">download</span>}
+                                {downloadingKey === key ? <Spinner size="sm" /> : <span className="material-symbols-outlined text-[20px] text-emerald-600">download</span>}
                               </button>
                             );
-                          })}
+                          })()}
+
+                          <div>
+                            <p className="mb-2 font-display text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+                              Outros formatos
+                            </p>
+                            <div className="grid grid-cols-2 gap-2">
+                              {translatedSecondaryDownloadFormats.map((format) => {
+                                const available = isDownloadAvailable(format, "translated");
+                                const key = `translated-${format}`;
+                                return (
+                                  <button
+                                    key={format}
+                                    type="button"
+                                    disabled={!available || downloadingKey !== null}
+                                    onClick={() => void handleDownload(format, "translated")}
+                                    className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 font-body text-xs font-semibold text-slate-600 transition hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:border-emerald-600/40 dark:hover:bg-emerald-900/10"
+                                    title={getDownloadHelper(format, available, true)}
+                                  >
+                                    {downloadingKey === key ? <Spinner size="sm" /> : formatDownloadLabel(format)}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     )}
