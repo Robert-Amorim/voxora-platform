@@ -7,10 +7,12 @@ import {
   createTranscription,
   createUploadPresign,
   getErrorMessage,
-  getMe
+  getMe,
+  getWallet
 } from "../lib/api";
 import { clearSessionTokens, getSessionTokens } from "../lib/session";
-import type { PublicUser } from "../lib/types";
+import { CREDIT_PRICE_PER_MINUTE_BRL, formatCurrency, formatDuration } from "../lib/transcriptions";
+import type { PublicUser, WalletSummary } from "../lib/types";
 
 const MAX_FILE_BYTES = 500 * 1024 * 1024; // 500 MB
 
@@ -33,6 +35,7 @@ const TRANSLATION_OPTIONS = [
 ];
 
 type UploadState = "idle" | "uploading" | "success" | "error";
+type DurationProbeState = "idle" | "loading" | "ready" | "error";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -50,15 +53,64 @@ function validateFile(file: File): string {
   return "";
 }
 
+function isVideoFile(file: File) {
+  return file.type.startsWith("video/") || [".mp4", ".webm"].some((ext) => file.name.toLowerCase().endsWith(ext));
+}
+
+function estimateChargeAmount(durationSeconds: number) {
+  return Number(((durationSeconds * CREDIT_PRICE_PER_MINUTE_BRL) / 60).toFixed(6));
+}
+
+async function getLocalMediaDurationSeconds(file: File): Promise<number> {
+  const objectUrl = URL.createObjectURL(file);
+  const media = isVideoFile(file) ? document.createElement("video") : document.createElement("audio");
+  media.preload = "metadata";
+  media.src = objectUrl;
+
+  return await new Promise<number>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("Não foi possível analisar a duração do arquivo a tempo."));
+    }, 15000);
+
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      media.removeAttribute("src");
+      media.load();
+      URL.revokeObjectURL(objectUrl);
+    };
+
+    media.onloadedmetadata = () => {
+      const duration = media.duration;
+      cleanup();
+      if (Number.isFinite(duration) && duration > 0) {
+        resolve(duration);
+        return;
+      }
+      reject(new Error("Não foi possível identificar a duração do arquivo."));
+    };
+
+    media.onerror = () => {
+      cleanup();
+      reject(new Error("Não foi possível ler a mídia enviada. Tente outro arquivo."));
+    };
+  });
+}
+
 export default function NewTranscriptionPage() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const durationProbeRequestIdRef = useRef(0);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [user, setUser] = useState<PublicUser | null>(null);
+  const [wallet, setWallet] = useState<WalletSummary | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState("");
+  const [durationProbeState, setDurationProbeState] = useState<DurationProbeState>("idle");
+  const [durationProbeError, setDurationProbeError] = useState("");
+  const [detectedDurationSeconds, setDetectedDurationSeconds] = useState<number | null>(null);
   const [language, setLanguage] = useState("pt-BR");
   const [translationTargetLanguage, setTranslationTargetLanguage] = useState("");
   const [uploadState, setUploadState] = useState<UploadState>("idle");
@@ -73,8 +125,9 @@ export default function NewTranscriptionPage() {
         return;
       }
       try {
-        const me = await getMe();
+        const [me, currentWallet] = await Promise.all([getMe(), getWallet()]);
         setUser(me);
+        setWallet(currentWallet);
       } catch {
         clearSessionTokens();
         navigate("/login", { replace: true });
@@ -86,11 +139,42 @@ export default function NewTranscriptionPage() {
   }, [navigate]);
 
   const handleFileChange = useCallback((file: File | null) => {
+    durationProbeRequestIdRef.current += 1;
+    const requestId = durationProbeRequestIdRef.current;
     setSelectedFile(file);
     setUploadState("idle");
     setStatusMessage("");
     setUploadProgress(0);
-    setFileError(file ? validateFile(file) : "");
+    setDurationProbeState("idle");
+    setDurationProbeError("");
+    setDetectedDurationSeconds(null);
+    const nextFileError = file ? validateFile(file) : "";
+    setFileError(nextFileError);
+
+    if (!file || nextFileError) {
+      return;
+    }
+
+    setDurationProbeState("loading");
+    void getLocalMediaDurationSeconds(file)
+      .then((durationSeconds) => {
+        if (durationProbeRequestIdRef.current !== requestId) {
+          return;
+        }
+        setDetectedDurationSeconds(durationSeconds);
+        setDurationProbeState("ready");
+      })
+      .catch((error) => {
+        if (durationProbeRequestIdRef.current !== requestId) {
+          return;
+        }
+        setDurationProbeState("error");
+        setDurationProbeError(
+          error instanceof Error
+            ? error.message
+            : "Não foi possível estimar a duração deste arquivo."
+        );
+      });
   }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -186,12 +270,38 @@ export default function NewTranscriptionPage() {
     );
   }
 
-  const canSubmit = !!selectedFile && !fileError && !isSubmitting;
+  const availableBalance = wallet ? Number(wallet.availableBalance) : null;
+  const estimatedCharge =
+    detectedDurationSeconds !== null ? estimateChargeAmount(detectedDurationSeconds) : null;
+  const hasEnoughCredits =
+    estimatedCharge !== null && availableBalance !== null ? availableBalance >= estimatedCharge : null;
+  const canSubmit =
+    !!selectedFile &&
+    !fileError &&
+    durationProbeState === "ready" &&
+    hasEnoughCredits === true &&
+    !isSubmitting;
   const nextStepMessage = selectedFile
     ? fileError
       ? "Escolha outro arquivo para continuar."
-      : "Tudo pronto. Clique em iniciar para enviar o arquivo e criar a transcrição."
+      : durationProbeState === "loading"
+        ? "Estamos analisando a duração do arquivo para validar o saldo necessário."
+        : durationProbeState === "error"
+          ? durationProbeError || "Não foi possível validar a duração deste arquivo."
+          : hasEnoughCredits === false
+            ? "Seu saldo atual não cobre essa transcrição. Recarregue a carteira antes de continuar."
+            : "Tudo pronto. O saldo cobre esta transcrição e você já pode iniciar o envio."
     : "Escolha um arquivo para liberar o envio.";
+  const nextStepTone =
+    selectedFile && !fileError
+      ? durationProbeState === "error" || hasEnoughCredits === false
+        ? "error"
+        : durationProbeState === "loading"
+          ? "info"
+          : "success"
+      : fileError
+        ? "error"
+        : "info";
 
   return (
     <main className="font-body text-slate-900 antialiased dark:text-slate-100">
@@ -261,7 +371,7 @@ export default function NewTranscriptionPage() {
                   {selectedFile && !fileError ? (
                     <>
                       <span className="material-symbols-outlined text-5xl text-emerald-500">
-                        audio_file
+                        {isVideoFile(selectedFile) ? "video_file" : "audio_file"}
                       </span>
                       <div className="text-center">
                         <p className="font-body font-semibold text-slate-800 dark:text-slate-100">
@@ -371,16 +481,22 @@ export default function NewTranscriptionPage() {
                   role="status"
                   aria-live="polite"
                   className={`rounded-xl border px-4 py-3 text-sm ${
-                    selectedFile && !fileError
+                    nextStepTone === "success"
                       ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                      : fileError
+                      : nextStepTone === "error"
                         ? "border-red-500/30 bg-red-500/10 text-red-300"
                         : "border-primary/20 bg-primary/10 text-slate-300"
                   }`}
                 >
                   <div className="flex items-start gap-3">
                     <span className="material-symbols-outlined mt-0.5 text-[18px] text-primary">
-                      {selectedFile && !fileError ? "task_alt" : fileError ? "error" : "info"}
+                      {nextStepTone === "success"
+                        ? "task_alt"
+                        : nextStepTone === "error"
+                          ? "error"
+                          : durationProbeState === "loading"
+                            ? "hourglass_top"
+                            : "info"}
                     </span>
                     <div>
                       <p className="font-semibold">Próximo passo</p>
@@ -442,6 +558,53 @@ export default function NewTranscriptionPage() {
               {/* Side panel */}
               <aside className="space-y-4 xl:col-span-5">
                 {/* Status card */}
+                <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+                  <p className="mb-4 font-display text-xs font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                    Validação de saldo
+                  </p>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-slate-500 dark:text-slate-400">Saldo disponível</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-100">
+                        {wallet ? formatCurrency(wallet.availableBalance) : "--"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-slate-500 dark:text-slate-400">Duração detectada</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-100">
+                        {durationProbeState === "loading"
+                          ? "Analisando..."
+                          : detectedDurationSeconds !== null
+                            ? formatDuration(Math.ceil(detectedDurationSeconds))
+                            : "--"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-slate-500 dark:text-slate-400">Custo estimado</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-100">
+                        {estimatedCharge !== null ? formatCurrency(estimatedCharge.toFixed(2)) : "--"}
+                      </span>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+                      {durationProbeState === "error" ? (
+                        <span>{durationProbeError}</span>
+                      ) : hasEnoughCredits === false ? (
+                        <span>
+                          Este {selectedFile && isVideoFile(selectedFile) ? "video" : "arquivo"} exige mais crédito do que o saldo atual. Recarregue a carteira para continuar.
+                        </span>
+                      ) : hasEnoughCredits === true ? (
+                        <span>
+                          O saldo atual cobre esta transcrição estimada.
+                        </span>
+                      ) : (
+                        <span>
+                          A liberação do envio acontece depois que a duração do arquivo for validada.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
                   <p className="mb-4 font-display text-xs font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">
                     Status do envio
