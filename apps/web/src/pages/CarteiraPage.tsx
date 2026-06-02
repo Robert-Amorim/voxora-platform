@@ -5,10 +5,7 @@ import DashboardSidebar from "../components/dashboard/DashboardSidebar";
 import LedgerPanel from "../components/dashboard/LedgerPanel";
 import {
   ApiError,
-  cancelPixPayment,
-  confirmPixPayment,
   createCardPayment,
-  createPixPayment,
   getErrorMessage,
   getMe,
   getWallet,
@@ -17,15 +14,12 @@ import {
 } from "../lib/api";
 import {
   CARD_MIN_TOP_UP_BRL,
-  getProviderStatusDetailLabel,
-  PIX_MIN_TOP_UP_BRL,
-  type TopUpMethod
+  getProviderStatusDetailLabel
 } from "../lib/payments";
 import { clearSessionTokens, getSessionTokens } from "../lib/session";
 import { formatCurrency, formatEstimatedMinutes, formatPricePerMinuteLabel } from "../lib/transcriptions";
 import type {
   PaymentSummary,
-  PixPaymentResponse,
   PublicUser,
   WalletLedgerEntry,
   WalletSummary
@@ -48,13 +42,8 @@ export default function CarteiraPage() {
   const [ledgerHasMore, setLedgerHasMore] = useState(false);
   const [ledgerPage, setLedgerPage] = useState(0);
   const [payments, setPayments] = useState<PaymentSummary[]>([]);
-  const [activePixPayment, setActivePixPayment] = useState<PixPaymentResponse | null>(null);
   const [topUpAmountInput, setTopUpAmountInput] = useState("20");
-  const [selectedTopUpMethod, setSelectedTopUpMethod] = useState<TopUpMethod>("pix");
-  const [isCreatingPayment, setIsCreatingPayment] = useState(false);
   const [isCreatingCardPayment, setIsCreatingCardPayment] = useState(false);
-  const [isCancellingPixPayment, setIsCancellingPixPayment] = useState(false);
-  const [isConfirmingMockPayment, setIsConfirmingMockPayment] = useState(false);
   const [isRefreshingData, setIsRefreshingData] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState("");
   const [feedbackTone, setFeedbackTone] = useState<FeedbackTone>("neutral");
@@ -67,23 +56,6 @@ export default function CarteiraPage() {
 
   const syncPaymentsState = useCallback((items: PaymentSummary[]) => {
     setPayments(items);
-    const latestPix = items.find(
-      (p) => p.method === "pix" && p.status === "pending" && p.pix
-    );
-    setActivePixPayment(
-      latestPix
-        ? {
-            payment: latestPix,
-            pix: {
-              providerMode: latestPix.providerMode ?? "mercado_pago",
-              copyPasteCode: latestPix.pix?.copyPasteCode ?? "",
-              expiresAt: latestPix.expiresAt ?? latestPix.createdAt,
-              qrCodeBase64: latestPix.pix?.qrCodeBase64 ?? null,
-              ticketUrl: latestPix.pix?.ticketUrl ?? null
-            }
-          }
-        : null
-    );
   }, []);
 
   const setFeedback = useCallback((tone: FeedbackTone, message: string) => {
@@ -170,35 +142,6 @@ export default function CarteiraPage() {
     [loadPage]
   );
 
-  const handleCreatePixPayment = useCallback(async () => {
-    const parsed = Number.parseFloat(topUpAmountInput.replace(",", "."));
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      setFeedback("error", "Informe um valor de recarga válido.");
-      return;
-    }
-    if (parsed < PIX_MIN_TOP_UP_BRL) {
-      setFeedback("error", `O valor minimo para PIX e ${formatCurrency(PIX_MIN_TOP_UP_BRL.toFixed(2))}.`);
-      return;
-    }
-    setIsCreatingPayment(true);
-    setFeedback("neutral", "Gerando cobrança PIX...");
-    try {
-      const created = await createPixPayment({ amount: parsed });
-      setActivePixPayment(created);
-      setFeedback("success", "PIX gerado com sucesso. Conclua o pagamento para liberar os créditos.");
-      await loadPage({ isRefresh: true });
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
-        clearSessionTokens();
-        navigate("/login", { replace: true });
-        return;
-      }
-      setFeedback("error", getErrorMessage(error, "Falha ao gerar pagamento PIX."));
-    } finally {
-      setIsCreatingPayment(false);
-    }
-  }, [loadPage, navigate, setFeedback, topUpAmountInput]);
-
   const handleCreateCardPayment = useCallback(
     async (payload: {
       amount: number;
@@ -250,51 +193,6 @@ export default function CarteiraPage() {
     [loadPage, navigate, setFeedback]
   );
 
-  const handleConfirmMockPayment = useCallback(async () => {
-    const paymentId = activePixPayment?.payment.id;
-    if (!paymentId) return;
-    setIsConfirmingMockPayment(true);
-    setFeedback("neutral", "Confirmando pagamento...");
-    try {
-      await confirmPixPayment(paymentId);
-      setFeedback("success", "Pagamento confirmado e créditos adicionados na carteira.");
-      setActivePixPayment(null);
-      await loadPage({ isRefresh: true });
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
-        clearSessionTokens();
-        navigate("/login", { replace: true });
-        return;
-      }
-      setFeedback("error", getErrorMessage(error, "Não foi possível confirmar o pagamento."));
-    } finally {
-      setIsConfirmingMockPayment(false);
-    }
-  }, [activePixPayment?.payment.id, loadPage, navigate, setFeedback]);
-
-  const handleCancelPixPayment = useCallback(async () => {
-    const paymentId = activePixPayment?.payment.id;
-    if (!paymentId) return;
-
-    setIsCancellingPixPayment(true);
-    setFeedback("neutral", "Cancelando PIX...");
-    try {
-      await cancelPixPayment(paymentId);
-      setActivePixPayment(null);
-      setFeedback("success", "PIX cancelado com sucesso.");
-      await loadPage({ isRefresh: true });
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
-        clearSessionTokens();
-        navigate("/login", { replace: true });
-        return;
-      }
-      setFeedback("error", getErrorMessage(error, "Nao foi possivel cancelar o PIX."));
-    } finally {
-      setIsCancellingPixPayment(false);
-    }
-  }, [activePixPayment?.payment.id, loadPage, navigate, setFeedback]);
-
   useEffect(() => {
     if (!getSessionTokens()) {
       navigate("/login", { replace: true });
@@ -304,10 +202,10 @@ export default function CarteiraPage() {
   }, [loadPage, navigate]);
 
   useEffect(() => {
-    if (!hasPendingPayments || selectedTopUpMethod === "credit_card") return;
+    if (!hasPendingPayments) return;
     const timer = setInterval(() => void refreshPaymentStatus(), 5000);
     return () => clearInterval(timer);
-  }, [hasPendingPayments, refreshPaymentStatus, selectedTopUpMethod]);
+  }, [hasPendingPayments, refreshPaymentStatus]);
 
   const availableBalance = wallet ? formatCurrency(wallet.availableBalance) : "--";
   const availableBalanceEstimate = wallet
@@ -361,7 +259,7 @@ export default function CarteiraPage() {
                           Adicione créditos para iniciar transcrições
                         </h3>
                         <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
-                          Gere um PIX ou pague com cartão. Assim que o pagamento for aprovado,
+                          Pague com cartão de crédito. Assim que o pagamento for aprovado,
                           o saldo aparece aqui e a transcrição já pode ser enviada.
                         </p>
                       </div>
@@ -386,21 +284,13 @@ export default function CarteiraPage() {
                   <CreditManagementPanel
                     amountInput={topUpAmountInput}
                     onAmountInputChange={setTopUpAmountInput}
-                    onCreatePixPayment={handleCreatePixPayment}
                     onCreateCardPayment={handleCreateCardPayment}
-                    onCancelPixPayment={handleCancelPixPayment}
                     payerEmail={user?.email ?? null}
-                    isCreatingPayment={isCreatingPayment}
                     isCreatingCardPayment={isCreatingCardPayment}
-                    isCancellingPixPayment={isCancellingPixPayment}
                     isRefreshingData={isRefreshingData}
-                    activePix={activePixPayment}
-                    onConfirmMockPayment={handleConfirmMockPayment}
-                    isConfirmingMockPayment={isConfirmingMockPayment}
                     payments={payments}
                     feedbackMessage={feedbackMessage}
                     feedbackTone={feedbackTone}
-                    onSelectedMethodChange={setSelectedTopUpMethod}
                   />
                 </div>
               </div>

@@ -81,6 +81,7 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default("15m"),
   JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
   SIGNUP_WELCOME_CREDIT: z.coerce.number().min(0).default(1),
+  PIX_PAYMENTS_ENABLED: z.coerce.boolean().default(false),
   PIX_MIN_AMOUNT: z.coerce.number().positive().default(10),
   CARD_MIN_AMOUNT: z.coerce.number().positive().default(15),
   PIX_MAX_AMOUNT: z.coerce.number().positive().default(5000),
@@ -3916,6 +3917,12 @@ async function registerRoutes() {
       config: { rateLimit: { max: 10, timeWindow: "1 minute" } }
     },
     async (request, reply) => {
+      if (!env.PIX_PAYMENTS_ENABLED) {
+        return reply.code(403).send({
+          message: "Recargas por PIX estão temporariamente desativadas."
+        });
+      }
+
       const body = createPixPaymentBodySchema.parse(request.body);
       const amount = toMoneyDecimal(body.amount);
       const idempotencyKey = `pix:create:${request.user.sub}:${Date.now()}:${randomUUID().slice(0, 8)}`;
