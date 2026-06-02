@@ -34,6 +34,10 @@ import type {
 
 type LoadState = "loading" | "ready" | "error";
 type ResultTab = "original" | "translated" | "subtitles";
+type DownloadFeedback = {
+  tone: "info" | "success" | "error";
+  message: string;
+} | null;
 
 function buildTranscriptCopyText(segments: TranscriptSegment[]) {
   return segments
@@ -68,6 +72,18 @@ function getDownloadHelper(format: OutputFormat, available: boolean, translated 
   return translated ? "Versão derivada pronta" : "Arquivo pronto para exportação";
 }
 
+function getDownloadFeedbackClass(tone: NonNullable<DownloadFeedback>["tone"]) {
+  switch (tone) {
+    case "success":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300";
+    case "error":
+      return "border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300";
+    case "info":
+    default:
+      return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300";
+  }
+}
+
 export default function TranscriptionResultPage() {
   const navigate = useNavigate();
   const params = useParams<{ id: string }>();
@@ -78,6 +94,7 @@ export default function TranscriptionResultPage() {
   const [job, setJob] = useState<TranscriptionJobDetail | null>(null);
   const [user, setUser] = useState<PublicUser | null>(null);
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
+  const [downloadFeedback, setDownloadFeedback] = useState<DownloadFeedback>(null);
 
   const [activeTab, setActiveTab] = useState<ResultTab>("original");
   const [subtitleVariant, setSubtitleVariant] = useState<TranscriptVariant>("original");
@@ -254,6 +271,11 @@ export default function TranscriptionResultPage() {
     }
     const downloadKey = `${variant}-${format}`;
     setDownloadingKey(downloadKey);
+    setDownloadFeedback({
+      tone: "info",
+      message: `Aguarde, estamos preparando o ${formatDownloadLabel(format)} ${variant === "original" ? "original" : "traduzido"}.`
+    });
+    setError("");
     try {
       const result = await downloadTranscriptionOutput(jobId, format, variant);
       const objectUrl = window.URL.createObjectURL(result.blob);
@@ -264,8 +286,19 @@ export default function TranscriptionResultPage() {
       anchor.click();
       anchor.remove();
       window.URL.revokeObjectURL(objectUrl);
+      setDownloadFeedback({
+        tone: "success",
+        message: `Download iniciado: ${result.fileName}.`
+      });
     } catch (downloadError) {
-      setError(getErrorMessage(downloadError, "Falha ao baixar arquivo."));
+      const retryMessage =
+        downloadError instanceof ApiError && downloadError.status === 404
+          ? "Arquivo ainda não está disponível. Aguarde alguns instantes e tente novamente."
+          : `${getErrorMessage(downloadError, "Falha ao baixar arquivo.")} Tente novamente.`;
+      setDownloadFeedback({
+        tone: "error",
+        message: retryMessage
+      });
     } finally {
       setDownloadingKey(null);
     }
@@ -810,6 +843,22 @@ export default function TranscriptionResultPage() {
                             );
                           })}
                         </div>
+                      </div>
+                    )}
+
+                    {downloadFeedback && (
+                      <div
+                        role={downloadFeedback.tone === "error" ? "alert" : "status"}
+                        aria-live="polite"
+                        className={`flex items-start gap-2 rounded-xl border px-3 py-3 font-body text-xs ${getDownloadFeedbackClass(downloadFeedback.tone)}`}
+                      >
+                        {downloadFeedback.tone === "info" && <Spinner size="sm" />}
+                        {downloadFeedback.tone !== "info" && (
+                          <span className="material-symbols-outlined text-[16px]">
+                            {downloadFeedback.tone === "success" ? "check_circle" : "error"}
+                          </span>
+                        )}
+                        <span>{downloadFeedback.message}</span>
                       </div>
                     )}
 
