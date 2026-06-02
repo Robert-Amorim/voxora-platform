@@ -1174,6 +1174,38 @@ function resolveStoragePath(rootDir: string, objectKey: string) {
   return resolvedTarget;
 }
 
+function getObjectFileName(objectKey: string) {
+  const parts = objectKey.split("/");
+  return parts[parts.length - 1] || "audio.bin";
+}
+
+function getSourceFileNameFromObjectKey(objectKey: string) {
+  const baseName = getObjectFileName(objectKey).trim();
+  const prefixedUploadMatch = baseName.match(
+    /^\d{10,17}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-(.+)$/i
+  );
+  return prefixedUploadMatch?.[1] || baseName || "audio.bin";
+}
+
+function getFileStem(fileName: string) {
+  return fileName.replace(/\.[^.]+$/, "") || fileName || "audio";
+}
+
+function sanitizeDownloadBaseName(fileName: string) {
+  const stem = getFileStem(fileName)
+    .replace(/[^a-zA-Z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80);
+  return stem || "transcricao";
+}
+
+function getDownloadFileName(sourceObjectKey: string, variant: string, format: string) {
+  const sourceFileName = getSourceFileNameFromObjectKey(sourceObjectKey);
+  const baseName = sanitizeDownloadBaseName(sourceFileName);
+  return `${baseName}.${variant}.${format}`;
+}
+
 function getErrorStatusCode(error: unknown) {
   if (typeof error !== "object" || !error) {
     return null;
@@ -5278,6 +5310,7 @@ async function registerRoutes() {
           }
 
           const variantLabel = query.variant === "original" ? "Original" : "Traduzido";
+          const sourceFileName = getSourceFileNameFromObjectKey(job.sourceObjectKey);
           let organizedDocument = null;
           try {
             organizedDocument = await organizeTranscriptForDocument({
@@ -5302,8 +5335,9 @@ async function registerRoutes() {
           }
 
           const docxContent = await renderTranscriptDocxBuffer({
-            title: `${variantLabel} · ${job.id}`,
+            title: `${sourceFileName} · ${variantLabel}`,
             sourceObjectKey: job.sourceObjectKey,
+            sourceFileName,
             variantLabel,
             language: transcript.language,
             durationSeconds: job.durationSeconds,
@@ -5313,7 +5347,7 @@ async function registerRoutes() {
           reply.type("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
           reply.header(
             "content-disposition",
-            `attachment; filename="transcription-${job.id}-${query.variant}.docx"`
+            `attachment; filename="${getDownloadFileName(job.sourceObjectKey, query.variant, "docx")}"`
           );
           return reply.send(docxContent);
         }
@@ -5358,7 +5392,7 @@ async function registerRoutes() {
       }
       reply.header(
         "content-disposition",
-        `attachment; filename="transcription-${output.jobId}-${query.variant}.${query.format}"`
+        `attachment; filename="${getDownloadFileName(output.job.sourceObjectKey, query.variant, query.format)}"`
       );
       return reply.send(outputContent);
     }

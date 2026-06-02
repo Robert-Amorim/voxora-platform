@@ -267,6 +267,27 @@ function getObjectFileName(objectKey: string) {
   return parts[parts.length - 1] || "audio.bin";
 }
 
+function getSourceFileNameFromObjectKey(objectKey: string) {
+  const baseName = getObjectFileName(objectKey).trim();
+  const prefixedUploadMatch = baseName.match(
+    /^\d{10,17}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-(.+)$/i
+  );
+  return prefixedUploadMatch?.[1] || baseName || "audio.bin";
+}
+
+function getFileStem(fileName: string) {
+  return fileName.replace(/\.[^.]+$/, "") || fileName || "audio";
+}
+
+function sanitizeOutputBaseName(fileName: string) {
+  const stem = getFileStem(fileName)
+    .replace(/[^a-zA-Z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80);
+  return stem || "transcricao";
+}
+
 function getOpenAiApiKey() {
   if (!openAiApiKey) {
     throw new Error(
@@ -344,9 +365,11 @@ function getOutputObjectKey(
   userId: string,
   jobId: string,
   variant: TranscriptVariant,
-  format: OutputFormat
+  format: OutputFormat,
+  sourceFileName: string
 ) {
-  return `outputs/${userId}/${jobId}.${variant}.${format}`;
+  const baseName = sanitizeOutputBaseName(sourceFileName);
+  return `outputs/${userId}/${jobId}/${baseName}.${variant}.${format}`;
 }
 
 function getOutputContentType(format: OutputFormat) {
@@ -530,6 +553,8 @@ async function publishOutputsForTranscript(params: {
     (segment) => segment.text.trim().length > 0
   );
   const variantLabel = params.variant === "original" ? "Original" : "Traduzido";
+  const sourceFileName = getSourceFileNameFromObjectKey(params.sourceObjectKey);
+  const artifactTitle = `${sourceFileName} · ${variantLabel}`;
 
   const outputs: Array<{
     format: OutputFormat;
@@ -541,6 +566,7 @@ async function publishOutputsForTranscript(params: {
   const txtContent = renderTranscriptText({
     id: params.jobId,
     sourceObjectKey: params.sourceObjectKey,
+    sourceFileName,
     language: params.language,
     variantLabel,
     durationSeconds: params.durationSeconds,
@@ -548,7 +574,7 @@ async function publishOutputsForTranscript(params: {
   });
   outputs.push({
     format: "txt",
-    objectKey: getOutputObjectKey(params.userId, params.jobId, params.variant, "txt"),
+    objectKey: getOutputObjectKey(params.userId, params.jobId, params.variant, "txt", sourceFileName),
     content: txtContent,
     sizeBytes: Buffer.byteLength(txtContent, "utf8")
   });
@@ -556,7 +582,7 @@ async function publishOutputsForTranscript(params: {
   const srtContent = renderSrtText(artifactSegments);
   outputs.push({
     format: "srt",
-    objectKey: getOutputObjectKey(params.userId, params.jobId, params.variant, "srt"),
+    objectKey: getOutputObjectKey(params.userId, params.jobId, params.variant, "srt", sourceFileName),
     content: srtContent,
     sizeBytes: Buffer.byteLength(srtContent, "utf8")
   });
@@ -582,8 +608,9 @@ async function publishOutputsForTranscript(params: {
   }
 
   const docxContent = await renderDocxBuffer({
-    title: `${variantLabel} · ${params.jobId}`,
+    title: artifactTitle,
     sourceObjectKey: params.sourceObjectKey,
+    sourceFileName,
     variantLabel,
     language: params.language,
     durationSeconds: params.durationSeconds,
@@ -592,22 +619,23 @@ async function publishOutputsForTranscript(params: {
   });
   outputs.push({
     format: "docx",
-    objectKey: getOutputObjectKey(params.userId, params.jobId, params.variant, "docx"),
+    objectKey: getOutputObjectKey(params.userId, params.jobId, params.variant, "docx", sourceFileName),
     content: docxContent,
     sizeBytes: docxContent.byteLength
   });
 
   if (params.generatePdf) {
     const pdfContent = await renderPdfBuffer({
-      title: `${variantLabel} · ${params.jobId}`,
+      title: artifactTitle,
       variantLabel,
+      sourceFileName,
       language: params.language,
       durationSeconds: params.durationSeconds,
       segments: artifactSegments
     });
     outputs.push({
       format: "pdf",
-      objectKey: getOutputObjectKey(params.userId, params.jobId, params.variant, "pdf"),
+      objectKey: getOutputObjectKey(params.userId, params.jobId, params.variant, "pdf", sourceFileName),
       content: pdfContent,
       sizeBytes: pdfContent.byteLength
     });

@@ -125,6 +125,7 @@ function addRevisedTranscriptParagraphs(
 export async function renderTranscriptDocxBuffer(params: {
   title: string;
   sourceObjectKey?: string;
+  sourceFileName?: string;
   variantLabel: string;
   language: string;
   durationSeconds: number | null;
@@ -144,8 +145,12 @@ export async function renderTranscriptDocxBuffer(params: {
     metadataParagraph("Duracao", formatDuration(params.durationSeconds))
   ];
 
+  if (params.sourceFileName) {
+    children.push(metadataParagraph("Arquivo de origem", params.sourceFileName));
+  }
+
   if (params.sourceObjectKey) {
-    children.push(metadataParagraph("Arquivo de origem", params.sourceObjectKey));
+    children.push(metadataParagraph("Chave de armazenamento", params.sourceObjectKey));
   }
 
   if (params.organizedDocument && params.organizedDocument.paragraphs.length > 0) {

@@ -174,16 +174,19 @@ function addRevisedTranscriptParagraphs(
 export function renderTranscriptText(params: {
   id: string;
   sourceObjectKey: string;
+  sourceFileName?: string;
   language: string;
   variantLabel: string;
   durationSeconds: number | null;
   segments: TranscriptArtifactSegment[];
 }) {
+  const sourceLabel = params.sourceFileName ?? params.sourceObjectKey;
   const header = [
     `Job: ${params.id}`,
+    `File: ${sourceLabel}`,
     `Variant: ${params.variantLabel}`,
     `Language: ${params.language}`,
-    `Source: ${params.sourceObjectKey}`,
+    `Source key: ${params.sourceObjectKey}`,
     `Duration: ${formatDuration(params.durationSeconds)}`,
     ""
   ];
@@ -228,6 +231,7 @@ export function renderSrtText(segments: TranscriptArtifactSegment[]) {
 export async function renderPdfBuffer(params: {
   title: string;
   variantLabel: string;
+  sourceFileName?: string;
   language: string;
   durationSeconds: number | null;
   segments: TranscriptArtifactSegment[];
@@ -266,6 +270,9 @@ export async function renderPdfBuffer(params: {
 
   drawLine(params.title, 18, true, rgb(0.1, 0.16, 0.23));
   cursorY -= 4;
+  if (params.sourceFileName) {
+    drawLine(`Arquivo: ${params.sourceFileName}`, 10, false, rgb(0.37, 0.45, 0.55));
+  }
   drawLine(`Variante: ${params.variantLabel}`, 10, false, rgb(0.37, 0.45, 0.55));
   drawLine(`Idioma: ${params.language}`, 10, false, rgb(0.37, 0.45, 0.55));
   drawLine(`Duracao: ${formatDuration(params.durationSeconds)}`, 10, false, rgb(0.37, 0.45, 0.55));
@@ -290,6 +297,7 @@ export async function renderPdfBuffer(params: {
 export async function renderDocxBuffer(params: {
   title: string;
   sourceObjectKey?: string;
+  sourceFileName?: string;
   variantLabel: string;
   language: string;
   durationSeconds: number | null;
@@ -309,8 +317,12 @@ export async function renderDocxBuffer(params: {
     metadataParagraph("Duracao", formatDuration(params.durationSeconds))
   ];
 
+  if (params.sourceFileName) {
+    children.push(metadataParagraph("Arquivo de origem", params.sourceFileName));
+  }
+
   if (params.sourceObjectKey) {
-    children.push(metadataParagraph("Arquivo de origem", params.sourceObjectKey));
+    children.push(metadataParagraph("Chave de armazenamento", params.sourceObjectKey));
   }
 
   if (params.organizedDocument && params.organizedDocument.paragraphs.length > 0) {
