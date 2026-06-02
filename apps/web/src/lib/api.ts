@@ -34,6 +34,15 @@ const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL ??
   (import.meta.env.DEV ? "http://localhost:3333" : window.location.origin)
 ).replace(/\/+$/, "");
+const SUPPORT_SUMMARY_CACHE_TTL_MS = 10000;
+
+let supportSummaryCache:
+  | {
+      key: string;
+      expiresAt: number;
+      promise: Promise<SupportSummary>;
+    }
+  | null = null;
 
 type RequestOptions = {
   method?: "GET" | "POST" | "PUT" | "PATCH";
@@ -298,9 +307,33 @@ export async function listSupportTickets(params?: { limit?: number; offset?: num
 }
 
 export async function getSupportSummary() {
-  return requestJson<SupportSummary>("/v1/support/summary", {
+  const cacheKey = getSessionTokens()?.accessToken ?? "anonymous";
+  const now = Date.now();
+  if (
+    supportSummaryCache &&
+    supportSummaryCache.key === cacheKey &&
+    supportSummaryCache.expiresAt > now
+  ) {
+    return supportSummaryCache.promise;
+  }
+
+  const promise = requestJson<SupportSummary>("/v1/support/summary", {
     auth: true
   });
+  supportSummaryCache = {
+    key: cacheKey,
+    expiresAt: now + SUPPORT_SUMMARY_CACHE_TTL_MS,
+    promise
+  };
+
+  try {
+    return await promise;
+  } catch (error) {
+    if (supportSummaryCache?.promise === promise) {
+      supportSummaryCache = null;
+    }
+    throw error;
+  }
 }
 
 export async function createSupportTicket(payload: {

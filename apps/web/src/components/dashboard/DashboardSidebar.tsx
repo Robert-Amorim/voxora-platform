@@ -35,7 +35,7 @@ export default function DashboardSidebar({ user, activeMenu = "dashboard" }: Das
     let isMounted = true;
 
     async function loadSummary() {
-      if (!user) {
+      if (!user || activeMenu !== "dashboard") {
         if (isMounted) setUnreadReplies(0);
         return;
       }
@@ -57,7 +57,7 @@ export default function DashboardSidebar({ user, activeMenu = "dashboard" }: Das
     return () => {
       isMounted = false;
     };
-  }, [user?.id]);
+  }, [activeMenu, user?.id]);
 
   return (
     <aside className="shrink-0 overflow-hidden border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-background-dark lg:flex lg:w-64 lg:flex-col lg:border-b-0 lg:border-r">

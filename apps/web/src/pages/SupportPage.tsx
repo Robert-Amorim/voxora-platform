@@ -6,7 +6,6 @@ import {
   ApiError,
   createSupportTicket,
   createSupportTicketMessage,
-  getSupportSummary,
   getErrorMessage,
   getMe,
   getSupportTicket,
@@ -46,6 +45,7 @@ export default function SupportPage() {
   const [selectedId, setSelectedId] = useState("");
   const [selectedThread, setSelectedThread] = useState<SupportThreadDetail | null>(null);
   const [pageError, setPageError] = useState("");
+  const [supportWarning, setSupportWarning] = useState("");
   const [detailError, setDetailError] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -80,17 +80,39 @@ export default function SupportPage() {
 
     setLoadState("loading");
     setPageError("");
+    setSupportWarning("");
 
-      try {
-      const [me, ticketList, ticketSummary] = await Promise.all([
-        getMe(),
-        listSupportTickets({ limit: 50 }),
-        getSupportSummary()
-      ]);
+    try {
+      const me = await getMe();
+
+      const ticketListResult = await listSupportTickets({ limit: 50 })
+        .then((value) => ({ status: "fulfilled" as const, value }))
+        .catch((reason) => ({ status: "rejected" as const, reason }));
+
+      const ticketList =
+        ticketListResult.status === "fulfilled"
+          ? ticketListResult.value
+          : { items: [] };
+      const ticketSummary =
+        ticketListResult.status === "fulfilled"
+          ? {
+              openTickets: ticketList.items.filter((ticket) =>
+                isOpenSupportThread(ticket.status)
+              ).length,
+              unreadReplies: ticketList.items.filter(
+                (ticket) => ticket.hasUnreadForCustomer
+              ).length
+            }
+          : EMPTY_SUPPORT_SUMMARY;
 
       setUser(me);
       setTickets(ticketList.items);
       setSummary(ticketSummary);
+      if (ticketListResult.status === "rejected") {
+        setSupportWarning(
+          "Parte do histórico de suporte não carregou agora. Você ainda pode abrir um novo ticket ou tentar atualizar."
+        );
+      }
 
       const nextSelectedId =
         selectedId && ticketList.items.some((item) => item.id === selectedId)
@@ -285,6 +307,15 @@ export default function SupportPage() {
           </header>
 
           <div className="flex-1 p-4 sm:p-6 lg:overflow-y-auto lg:p-8">
+            {supportWarning ? (
+              <p
+                role="status"
+                aria-live="polite"
+                className="mb-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
+              >
+                {supportWarning}
+              </p>
+            ) : null}
             <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
               <div className="space-y-6">
                 <article className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
