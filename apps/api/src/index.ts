@@ -79,7 +79,7 @@ const envSchema = z.object({
   ADMIN_EMAILS: z.string().optional(),
   SUPPORT_EMAILS: z.string().optional(),
   JWT_EXPIRES_IN: z.string().default("15m"),
-  JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
+  JWT_REFRESH_EXPIRES_IN: z.string().default("12h"),
   SIGNUP_WELCOME_CREDIT: z.coerce.number().min(0).default(1),
   PIX_PAYMENTS_ENABLED: z.coerce.boolean().default(false),
   PIX_MIN_AMOUNT: z.coerce.number().positive().default(10),
