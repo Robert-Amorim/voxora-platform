@@ -256,7 +256,11 @@ export default function NewTranscriptionPage() {
       }
       setUploadState("error");
       setUploadProgress(0);
-      setStatusMessage(getErrorMessage(error, "Falha ao iniciar a transcrição."));
+      if (error instanceof ApiError && error.status === 413) {
+        setStatusMessage("O arquivo excede o limite permitido para upload. Reduza o tamanho ou envie uma versão menor que 500 MB.");
+      } else {
+        setStatusMessage(getErrorMessage(error, "Falha ao iniciar a transcrição."));
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -720,7 +724,16 @@ async function uploadWithProgress(
 
     xhr.addEventListener("load", () => {
       if (xhr.status >= 200 && xhr.status < 300) resolve();
-      else reject(new ApiError(`Falha no upload (status ${xhr.status}).`, xhr.status));
+      else {
+        reject(
+          new ApiError(
+            xhr.status === 413
+              ? "O arquivo excede o limite permitido para upload."
+              : `Falha no upload (status ${xhr.status}).`,
+            xhr.status
+          )
+        );
+      }
     });
 
     xhr.addEventListener("error", () => {
