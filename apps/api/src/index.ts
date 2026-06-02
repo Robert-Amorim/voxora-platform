@@ -30,6 +30,7 @@ import {
 } from "./lib/object-storage";
 import { createMercadoPagoClient } from "./lib/mercado-pago";
 import { renderTranscriptDocxBuffer } from "./lib/transcript-docx";
+import { organizeTranscriptForDocument } from "./lib/transcript-organization";
 
 const envCandidates = [
   resolve(process.cwd(), ".env"),
@@ -111,6 +112,18 @@ const envSchema = z.object({
   PAYMENT_DESCRIPTION_PREFIX: z.string().default("Voxora"),
   CORS_ALLOWED_ORIGINS: z.string().optional(),
   REQUEST_TIMEOUT_MS: z.coerce.number().int().min(5000).max(600000).default(60000),
+  OPENAI_API_KEY: z.string().optional(),
+  OPENAI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
+  OPENAI_DOCUMENT_MODEL: z.string().default("gpt-4.1-mini"),
+  OPENAI_DOCUMENT_TIMEOUT_MS: z.coerce.number().int().min(1000).max(180000).default(45000),
+  DOCX_AI_ORGANIZATION_ENABLED: z
+    .preprocess((value) => {
+      if (typeof value === "string") {
+        return value.trim().toLowerCase() !== "false";
+      }
+      return value;
+    }, z.boolean())
+    .default(true),
   TURNSTILE_SECRET_KEY: z.string().optional(),
   EMAIL_HOST: z.string().default("smtpout.secureserver.net"),
   EMAIL_PORT: z.coerce.number().int().default(465),
@@ -5265,13 +5278,37 @@ async function registerRoutes() {
           }
 
           const variantLabel = query.variant === "original" ? "Original" : "Traduzido";
+          let organizedDocument = null;
+          try {
+            organizedDocument = await organizeTranscriptForDocument({
+              enabled: env.DOCX_AI_ORGANIZATION_ENABLED,
+              apiKey: env.OPENAI_API_KEY?.trim() || null,
+              baseUrl: env.OPENAI_BASE_URL,
+              model: env.OPENAI_DOCUMENT_MODEL,
+              timeoutMs: env.OPENAI_DOCUMENT_TIMEOUT_MS,
+              variantLabel,
+              language: transcript.language,
+              segments
+            });
+          } catch (error) {
+            request.log.warn(
+              {
+                error,
+                jobId: job.id,
+                variant: query.variant
+              },
+              "Could not organize DOCX transcript with AI; exporting faithful transcript only."
+            );
+          }
+
           const docxContent = await renderTranscriptDocxBuffer({
             title: `${variantLabel} · ${job.id}`,
             sourceObjectKey: job.sourceObjectKey,
             variantLabel,
             language: transcript.language,
             durationSeconds: job.durationSeconds,
-            segments
+            segments,
+            organizedDocument
           });
           reply.type("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
           reply.header(

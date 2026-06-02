@@ -33,6 +33,7 @@ import {
   renderTranscriptText,
   type TranscriptArtifactSegment
 } from "./lib/transcript-artifacts";
+import { organizeTranscriptForDocument } from "./lib/transcript-organization";
 import { translateSegments } from "./lib/translation";
 import { isHallucinatedText } from "./lib/transcription/quality-guards";
 import {
@@ -87,6 +88,16 @@ const envSchema = z.object({
   OPENAI_TRANSCRIBE_DIARIZE_MODEL: z.string().default("gpt-4o-transcribe-diarize"),
   OPENAI_TRANSCRIBE_CHUNKED_MODEL: z.string().default("whisper-1"),
   OPENAI_TRANSLATION_MODEL: z.string().default("gpt-4.1-mini"),
+  OPENAI_DOCUMENT_MODEL: z.string().default("gpt-4.1-mini"),
+  OPENAI_DOCUMENT_TIMEOUT_MS: z.coerce.number().int().min(1000).max(180000).default(45000),
+  DOCX_AI_ORGANIZATION_ENABLED: z
+    .preprocess((value) => {
+      if (typeof value === "string") {
+        return value.trim().toLowerCase() !== "false";
+      }
+      return value;
+    }, z.boolean())
+    .default(true),
   DIARIZER_URL: z.string().url().optional(),
   DIARIZER_TIMEOUT_MS: z.coerce.number().int().min(5000).max(7200000).default(1800000),
   OPENAI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(900000).default(300000),
@@ -550,13 +561,34 @@ async function publishOutputsForTranscript(params: {
     sizeBytes: Buffer.byteLength(srtContent, "utf8")
   });
 
+  let organizedDocument = null;
+  try {
+    organizedDocument = await organizeTranscriptForDocument({
+      enabled: env.DOCX_AI_ORGANIZATION_ENABLED && whisperProvider !== "simulation",
+      apiKey: openAiApiKey,
+      baseUrl: env.OPENAI_BASE_URL,
+      model: env.OPENAI_DOCUMENT_MODEL,
+      timeoutMs: env.OPENAI_DOCUMENT_TIMEOUT_MS,
+      variantLabel,
+      language: params.language,
+      segments: artifactSegments
+    });
+  } catch (error) {
+    logWorker("warn", "Could not organize DOCX transcript with AI; exporting faithful transcript only.", {
+      jobId: params.jobId,
+      variant: params.variant,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+
   const docxContent = await renderDocxBuffer({
     title: `${variantLabel} · ${params.jobId}`,
     sourceObjectKey: params.sourceObjectKey,
     variantLabel,
     language: params.language,
     durationSeconds: params.durationSeconds,
-    segments: artifactSegments
+    segments: artifactSegments,
+    organizedDocument
   });
   outputs.push({
     format: "docx",

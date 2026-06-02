@@ -7,6 +7,7 @@ import {
   Paragraph,
   TextRun
 } from "docx";
+import type { OrganizedTranscriptDocument } from "./transcript-organization";
 
 export type TranscriptArtifactSegment = {
   segmentIndex: number;
@@ -121,6 +122,24 @@ function metadataParagraph(label: string, value: string) {
       new TextRun(value)
     ]
   });
+}
+
+function addDocxBodyParagraphs(children: Paragraph[], body: string) {
+  const lines = body
+    .split(/\n+/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const bulletMatch = line.match(/^[-*]\s+(.+)/);
+    children.push(
+      new Paragraph({
+        spacing: { after: 110 },
+        bullet: bulletMatch ? { level: 0 } : undefined,
+        children: [new TextRun(bulletMatch ? bulletMatch[1] : line)]
+      })
+    );
+  }
 }
 
 export function renderTranscriptText(params: {
@@ -246,6 +265,7 @@ export async function renderDocxBuffer(params: {
   language: string;
   durationSeconds: number | null;
   segments: TranscriptArtifactSegment[];
+  organizedDocument?: OrganizedTranscriptDocument | null;
 }) {
   const prose = joinSegmentsAsProse(params.segments);
   const children: Paragraph[] = [
@@ -262,6 +282,48 @@ export async function renderDocxBuffer(params: {
 
   if (params.sourceObjectKey) {
     children.push(metadataParagraph("Arquivo de origem", params.sourceObjectKey));
+  }
+
+  if (params.organizedDocument && params.organizedDocument.sections.length > 0) {
+    children.push(
+      new Paragraph({
+        heading: HeadingLevel.HEADING_1,
+        spacing: { before: 280, after: 120 },
+        children: [new TextRun("Texto organizado por IA")]
+      }),
+      new Paragraph({
+        spacing: { after: 180 },
+        children: [
+          new TextRun({
+            text:
+              "Esta secao reorganiza a transcricao para leitura, preservando o conteudo original. Use a transcricao fiel abaixo para conferencia.",
+            italics: true,
+            color: "64748B"
+          })
+        ]
+      })
+    );
+
+    if (params.organizedDocument.title) {
+      children.push(
+        new Paragraph({
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 120, after: 90 },
+          children: [new TextRun(params.organizedDocument.title)]
+        })
+      );
+    }
+
+    for (const section of params.organizedDocument.sections) {
+      children.push(
+        new Paragraph({
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 180, after: 90 },
+          children: [new TextRun(section.heading)]
+        })
+      );
+      addDocxBodyParagraphs(children, section.body);
+    }
   }
 
   children.push(

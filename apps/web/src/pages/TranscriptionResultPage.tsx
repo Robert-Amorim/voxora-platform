@@ -63,7 +63,7 @@ function getDownloadHelper(format: OutputFormat, available: boolean, translated 
     return translated ? "Processamento em andamento" : "Aguardando regeneração";
   }
   if (format === "docx") {
-    return "Documento organizado para Word";
+    return "Documento organizado por IA para Word";
   }
   return translated ? "Versão derivada pronta" : "Arquivo pronto para exportação";
 }
