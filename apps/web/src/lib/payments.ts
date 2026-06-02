@@ -26,7 +26,7 @@ export function getTopUpMinimumAmount(method: TopUpMethod) {
 export function getProviderStatusDetailLabel(statusDetail?: string | null) {
   switch (statusDetail) {
     case "cc_rejected_high_risk":
-      return "Pagamento recusado pela análise de risco do Mercado Pago. Em testes, use credenciais de teste e cartões de teste do provedor. Em produção, tente outro cartão ou PIX.";
+      return "Pagamento recusado pela análise de risco do Mercado Pago. Confirme se o nome do titular e o CPF estão corretos, evite muitas tentativas seguidas e tente novamente com outro cartão se necessário.";
     case "cc_rejected_insufficient_amount":
       return "Pagamento recusado por saldo ou limite insuficiente no cartão.";
     case "cc_rejected_bad_filled_card_number":
@@ -42,11 +42,11 @@ export function getProviderStatusDetailLabel(statusDetail?: string | null) {
     case "cc_rejected_card_disabled":
       return "O cartão está desabilitado para este tipo de compra.";
     case "cc_rejected_duplicated_payment":
-      return "Já existe uma tentativa semelhante recente. Aguarde alguns minutos ou use outro método.";
+      return "Já existe uma tentativa semelhante recente. Aguarde alguns minutos antes de tentar novamente.";
     case "cc_rejected_max_attempts":
       return "Muitas tentativas foram feitas com este cartão. Aguarde antes de tentar novamente.";
     case "cc_rejected_other_reason":
-      return "O Mercado Pago recusou o pagamento. Tente outro cartão ou use PIX.";
+      return "O Mercado Pago recusou o pagamento. Revise os dados do titular e tente novamente com outro cartão se necessário.";
     case "accredited":
       return "Pagamento aprovado e creditado.";
     case "pending_contingency":

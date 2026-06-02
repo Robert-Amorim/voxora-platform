@@ -109,6 +109,14 @@ function getPaymentMethodLabel(method: PaymentSummary["method"]) {
   return method === "credit_card" ? "Cartao" : "PIX";
 }
 
+function isHighRiskRejection(payment: Pick<PaymentSummary, "method" | "status" | "statusDetail">) {
+  return (
+    payment.method === "credit_card" &&
+    payment.status === "rejected" &&
+    payment.statusDetail === "cc_rejected_high_risk"
+  );
+}
+
 function getStatusGuidance(payment: PaymentSummary, nowMs: number) {
   if (isCancelledByUser(payment)) {
     return "Este PIX foi cancelado e não deve mais ser pago. Gere um novo PIX se quiser continuar.";
@@ -216,6 +224,14 @@ export default function CreditManagementPanel({
     () => cardPayments[0] ?? null,
     [cardPayments]
   );
+
+  const recentHighRiskRejections = useMemo(
+    () => cardPayments.filter((payment) => isHighRiskRejection(payment)).slice(0, 3),
+    [cardPayments]
+  );
+
+  const shouldShowRecoveryPanel = recentHighRiskRejections.length > 0;
+  const hasRepeatedHighRiskRejections = recentHighRiskRejections.length >= 2;
 
   const selectedPayment = useMemo(() => {
     if (!selectedPaymentId) {
@@ -371,6 +387,39 @@ export default function CreditManagementPanel({
         </article>
       ) : null}
 
+      {shouldShowRecoveryPanel ? (
+        <article className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-50">
+          <div className="flex items-start gap-3">
+            <span className="material-symbols-outlined mt-0.5 text-[18px] text-amber-300">
+              shield_locked
+            </span>
+            <div className="space-y-2">
+              <p className="font-semibold text-amber-900 dark:text-amber-200">
+                {hasRepeatedHighRiskRejections
+                  ? "O provedor identificou risco em mais de uma tentativa recente."
+                  : "A última tentativa foi recusada pela análise de risco do provedor."}
+              </p>
+              <p className="text-xs text-amber-800 dark:text-amber-100/90">
+                Antes de tentar novamente, revise estes pontos para aumentar a chance de aprovação.
+              </p>
+              <ul className="space-y-1 text-xs text-amber-800 dark:text-amber-100/90">
+                <li>Use o nome do titular exatamente como aparece no cartão.</li>
+                <li>Confirme CPF, validade e CVV sem abreviações ou diferenças.</li>
+                <li>Evite muitas tentativas seguidas no mesmo navegador ou cartão.</li>
+                <li>Se possível, tente outro cartão do mesmo titular.</li>
+                <li>
+                  Se continuar recusando, fale com o suporte em{" "}
+                  <a className="font-semibold underline underline-offset-2" href="/suporte">
+                    /suporte
+                  </a>{" "}
+                  para analisarmos com você.
+                </li>
+              </ul>
+            </div>
+          </div>
+        </article>
+      ) : null}
+
       <MercadoPagoCardTopUpForm
         amount={parsedAmount}
         minimumAmount={CARD_MIN_TOP_UP_BRL}
@@ -434,7 +483,9 @@ export default function CreditManagementPanel({
                       </p>
                     ) : null}
                     {payment.statusDetail ? (
-                      <p className="truncate text-[11px] text-slate-500">{payment.statusDetail}</p>
+                      <p className="truncate text-[11px] text-slate-500">
+                        {getProviderStatusDetailLabel(payment.statusDetail) ?? payment.statusDetail}
+                      </p>
                     ) : null}
                   </div>
                   <span
