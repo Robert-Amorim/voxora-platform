@@ -260,6 +260,8 @@ export default function NewTranscriptionPage() {
       setUploadProgress(0);
       if (error instanceof ApiError && error.status === 413) {
         setStatusMessage("O arquivo excede o limite permitido para upload. Reduza o tamanho ou envie uma versão menor que 500 MB.");
+      } else if (error instanceof ApiError && error.status === 408) {
+        setStatusMessage("O upload demorou mais do que o permitido para concluir. Verifique sua conexão e tente novamente. Se o arquivo for muito grande, compacte-o antes do envio.");
       } else {
         setStatusMessage(getErrorMessage(error, "Falha ao iniciar a transcrição."));
       }
@@ -750,6 +752,8 @@ async function uploadWithProgress(
           new ApiError(
             xhr.status === 413
               ? "O arquivo excede o limite permitido para upload."
+              : xhr.status === 408
+                ? "O upload levou tempo demais para concluir."
               : `Falha no upload (status ${xhr.status}).`,
             xhr.status
           )
