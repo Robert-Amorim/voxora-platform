@@ -11,7 +11,6 @@ export type MercadoPagoPixPaymentRequest = {
   externalReference: string;
   idempotencyKey: string;
   expiresAt?: string;
-  notificationUrl?: string;
 };
 
 export type MercadoPagoPixPaymentResponse = {
@@ -41,7 +40,6 @@ export type MercadoPagoCardPaymentRequest = {
   installments: number;
   paymentMethodId: string;
   issuerId?: string;
-  notificationUrl?: string;
   payer: {
     email: string;
     identification?: {
@@ -137,7 +135,6 @@ export function createMercadoPagoClient(config: MercadoPagoClientConfig) {
           payment_method_id: "pix",
           external_reference: payment.externalReference,
           date_of_expiration: payment.expiresAt,
-          notification_url: payment.notificationUrl,
           payer: {
             email: payment.payerEmail
           }
@@ -197,7 +194,6 @@ export function createMercadoPagoClient(config: MercadoPagoClientConfig) {
           payment_method_id: payment.paymentMethodId,
           issuer_id: payment.issuerId,
           external_reference: payment.externalReference,
-          notification_url: payment.notificationUrl,
           processing_mode: payment.processingMode,
           payment_method_option_id: payment.paymentMethodOptionId,
           payer: {

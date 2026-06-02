@@ -23,7 +23,8 @@ Isso evita manter o endpoint publico sem autenticacao.
 Use o fluxo oficial de assinatura do Mercado Pago e configure:
 
 - `PAYMENT_WEBHOOK_SIGNATURE_SECRET`
-- `MERCADO_PAGO_WEBHOOK_URL=https://voxora.integraretech.com.br/v1/webhooks/mercadopago`
+- URL do webhook no painel da aplicacao Mercado Pago:
+  `https://voxora.integraretech.com.br/api/v1/webhooks/mercadopago`
 
 Com isso, a Voxora valida os headers esperados pelo Mercado Pago:
 
@@ -53,7 +54,7 @@ Com isso, a Voxora valida os headers esperados pelo Mercado Pago:
 Se o webhook responder `401`, verificar nesta ordem:
 
 1. `PAYMENT_WEBHOOK_SIGNATURE_SECRET` preenchido no `.env`
-2. `MERCADO_PAGO_WEBHOOK_URL` apontando para o dominio publico correto
+2. URL do webhook no painel Mercado Pago apontando para o dominio publico correto
 3. headers `x-signature` e `x-request-id` chegando ao endpoint
 4. relog da API com `pm2 logs transcribe-api --lines 100 --nostream`
 

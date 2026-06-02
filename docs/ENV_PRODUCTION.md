@@ -25,7 +25,6 @@
 | `VITE_MERCADO_PAGO_PUBLIC_KEY` | Web | — | Public Key do Mercado Pago usada pelo Brick de cartão |
 | `PAYMENT_WEBHOOK_SIGNATURE_SECRET` | API | — | Secret para validar assinatura do webhook MP |
 | `PAYMENT_WEBHOOK_SECRET` | API | — | Secret alternativo para webhook (fallback) |
-| `MERCADO_PAGO_WEBHOOK_URL` | API | — | URL pública do webhook para notificações |
 | `ADMIN_EMAILS` | API | — | Lista CSV de e-mails que devem subir como `admin` no bootstrap |
 | `SUPPORT_EMAILS` | API | — | Lista CSV de e-mails que devem subir como `support` no bootstrap |
 

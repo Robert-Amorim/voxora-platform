@@ -100,15 +100,6 @@ const envSchema = z.object({
   MERCADO_PAGO_ACCESS_TOKEN: z.string().optional(),
   MERCADO_PAGO_API_BASE_URL: z.string().url().default("https://api.mercadopago.com"),
   MERCADO_PAGO_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(15000),
-  MERCADO_PAGO_WEBHOOK_URL: z.preprocess(
-    (value) => {
-      if (typeof value === "string" && value.trim().length === 0) {
-        return undefined;
-      }
-      return value;
-    },
-    z.string().url().optional()
-  ),
   PAYMENT_DESCRIPTION_PREFIX: z.string().default("Voxora"),
   CORS_ALLOWED_ORIGINS: z.string().optional(),
   REQUEST_TIMEOUT_MS: z.coerce.number().int().min(5000).max(600000).default(60000),
@@ -2188,6 +2179,12 @@ function resolveWebhookProviderPaymentId(
   return null;
 }
 
+function isLegacyMercadoPagoIpnCallback(request: FastifyRequest) {
+  const query = request.query as Record<string, unknown> | undefined;
+  const topic = typeof query?.topic === "string" ? query.topic.toLowerCase() : "";
+  return Boolean(query?.id && topic === "payment" && !query?.["data.id"]);
+}
+
 async function resolveWebhookPaymentStatus(params: {
   request: FastifyRequest;
   body: unknown;
@@ -4015,8 +4012,7 @@ async function registerRoutes() {
             description: `${env.PAYMENT_DESCRIPTION_PREFIX} - Recarga de créditos`,
             externalReference: `user:${request.user.sub}`,
             idempotencyKey,
-            expiresAt: expiresAt.toISOString(),
-            notificationUrl: env.MERCADO_PAGO_WEBHOOK_URL
+            expiresAt: expiresAt.toISOString()
           });
 
           providerPaymentId = created.id;
@@ -4117,7 +4113,6 @@ async function registerRoutes() {
           installments: body.installments,
           paymentMethodId: body.paymentMethodId,
           issuerId: body.issuerId,
-          notificationUrl: env.MERCADO_PAGO_WEBHOOK_URL,
           processingMode: body.processingMode,
           paymentMethodOptionId: body.paymentMethodOptionId,
           payer: {
@@ -4319,6 +4314,29 @@ async function registerRoutes() {
       providerPaymentId
     });
     if (!authValidation.ok) {
+      if (isLegacyMercadoPagoIpnCallback(request)) {
+        const existingPayment = await prisma.payment.findUnique({
+          where: { providerPaymentId },
+          select: { id: true, status: true }
+        });
+        if (existingPayment) {
+          request.log.info(
+            getRequestContext(request, {
+              provider_payment_id: providerPaymentId,
+              payment_id: existingPayment.id,
+              payment_status: existingPayment.status,
+              reason: "legacy_ipn_duplicate"
+            }),
+            "Mercado Pago legacy IPN duplicate ignored."
+          );
+          return reply.send({
+            ok: true,
+            ignored: true,
+            reason: "legacy_ipn_duplicate"
+          });
+        }
+      }
+
       request.log.warn(
         getRequestContext(request, {
           provider_payment_id: providerPaymentId,
