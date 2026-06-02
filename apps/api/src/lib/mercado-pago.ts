@@ -35,6 +35,7 @@ export type MercadoPagoCardPaymentRequest = {
   amount: number;
   token: string;
   description: string;
+  statementDescriptor?: string;
   externalReference: string;
   idempotencyKey: string;
   installments: number;
@@ -191,6 +192,7 @@ export function createMercadoPagoClient(config: MercadoPagoClientConfig) {
           transaction_amount: payment.amount,
           token: payment.token,
           description: payment.description,
+          statement_descriptor: payment.statementDescriptor,
           installments: payment.installments,
           payment_method_id: payment.paymentMethodId,
           issuer_id: payment.issuerId,

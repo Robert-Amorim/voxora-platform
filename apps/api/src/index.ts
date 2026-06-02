@@ -123,6 +123,7 @@ const envSchema = z.object({
 
 const env = envSchema.parse(process.env);
 const MERCADO_PAGO_MIN_PIX_EXPIRES_MINUTES = 30;
+const MERCADO_PAGO_CARD_STATEMENT_DESCRIPTOR = "VOXORA AI";
 const monorepoRootDir = resolve(__dirname, "../../../");
 const signupWelcomeCredit = new Prisma.Decimal(env.SIGNUP_WELCOME_CREDIT.toFixed(6));
 const adminEmailSet = new Set(
@@ -4057,6 +4058,7 @@ async function registerRoutes() {
           amount: body.amount,
           token: body.token,
           description: `${env.PAYMENT_DESCRIPTION_PREFIX} - Recarga com cartão`,
+          statementDescriptor: MERCADO_PAGO_CARD_STATEMENT_DESCRIPTOR,
           externalReference: `user:${request.user.sub}`,
           idempotencyKey,
           installments: body.installments,
