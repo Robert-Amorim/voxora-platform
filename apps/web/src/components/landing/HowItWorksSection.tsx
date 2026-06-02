@@ -43,7 +43,7 @@ export default function HowItWorksSection() {
             </div>
             <h3 className="mb-3 text-xl font-bold text-slate-900 dark:text-white">3. Exportação</h3>
             <p className="lp-copy leading-relaxed text-slate-600 dark:text-slate-200">
-              Edite no navegador se necessário e exporte para DOCX organizado por IA, TXT, SRT (legendas) ou PDF formatado.
+              Edite no navegador se necessário e exporte para DOCX revisado para leitura, TXT, SRT (legendas) ou PDF formatado.
             </p>
           </div>
         </div>

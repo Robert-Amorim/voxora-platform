@@ -574,7 +574,7 @@ async function publishOutputsForTranscript(params: {
       segments: artifactSegments
     });
   } catch (error) {
-    logWorker("warn", "Could not organize DOCX transcript with AI; exporting faithful transcript only.", {
+    logWorker("warn", "Could not revise DOCX transcript with AI; exporting faithful transcript only.", {
       jobId: params.jobId,
       variant: params.variant,
       error: error instanceof Error ? error.message : String(error)

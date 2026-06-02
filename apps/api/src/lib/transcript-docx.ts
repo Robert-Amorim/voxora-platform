@@ -93,6 +93,35 @@ function addDocxBodyParagraphs(children: Paragraph[], body: string) {
   }
 }
 
+function addRevisedTranscriptParagraphs(
+  children: Paragraph[],
+  document: OrganizedTranscriptDocument
+) {
+  for (const paragraph of document.paragraphs) {
+    const start = paragraph.startSec !== null ? formatDuration(paragraph.startSec) : null;
+    const end = paragraph.endSec !== null ? formatDuration(paragraph.endSec) : null;
+    const range = start && end ? `${start} - ${end}` : null;
+    const header = [paragraph.speakerLabel, range].filter(Boolean).join(" · ");
+
+    if (header) {
+      children.push(
+        new Paragraph({
+          spacing: { before: 140, after: 60 },
+          children: [
+            new TextRun({
+              text: header,
+              bold: true,
+              color: "1D4ED8"
+            })
+          ]
+        })
+      );
+    }
+
+    addDocxBodyParagraphs(children, paragraph.body);
+  }
+}
+
 export async function renderTranscriptDocxBuffer(params: {
   title: string;
   sourceObjectKey?: string;
@@ -119,19 +148,19 @@ export async function renderTranscriptDocxBuffer(params: {
     children.push(metadataParagraph("Arquivo de origem", params.sourceObjectKey));
   }
 
-  if (params.organizedDocument && params.organizedDocument.sections.length > 0) {
+  if (params.organizedDocument && params.organizedDocument.paragraphs.length > 0) {
     children.push(
       new Paragraph({
         heading: HeadingLevel.HEADING_1,
         spacing: { before: 280, after: 120 },
-        children: [new TextRun("Texto organizado por IA")]
+        children: [new TextRun("Transcricao revisada para leitura")]
       }),
       new Paragraph({
         spacing: { after: 180 },
         children: [
           new TextRun({
             text:
-              "Esta secao reorganiza a transcricao para leitura, preservando o conteudo original. Use a transcricao fiel abaixo para conferencia.",
+              "Esta secao corrige pontuacao, paragrafos e organizacao das falas sem resumir, comentar ou adicionar informacoes. Use a transcricao fiel abaixo para conferencia.",
             italics: true,
             color: "64748B"
           })
@@ -139,26 +168,7 @@ export async function renderTranscriptDocxBuffer(params: {
       })
     );
 
-    if (params.organizedDocument.title) {
-      children.push(
-        new Paragraph({
-          heading: HeadingLevel.HEADING_2,
-          spacing: { before: 120, after: 90 },
-          children: [new TextRun(params.organizedDocument.title)]
-        })
-      );
-    }
-
-    for (const section of params.organizedDocument.sections) {
-      children.push(
-        new Paragraph({
-          heading: HeadingLevel.HEADING_2,
-          spacing: { before: 180, after: 90 },
-          children: [new TextRun(section.heading)]
-        })
-      );
-      addDocxBodyParagraphs(children, section.body);
-    }
+    addRevisedTranscriptParagraphs(children, params.organizedDocument);
   }
 
   children.push(

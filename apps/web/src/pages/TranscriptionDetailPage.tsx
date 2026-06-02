@@ -51,7 +51,7 @@ function getDownloadHelper(format: OutputFormat, available: boolean) {
     return "Aguardando artefato.";
   }
   if (format === "docx") {
-    return "Documento organizado por IA para Word.";
+    return "Documento revisado para leitura no Word.";
   }
   return "Arquivo publicado.";
 }
@@ -515,7 +515,7 @@ export default function TranscriptionDetailPage() {
                                   </p>
                                   <p className="font-body text-xs text-slate-400">
                                     {format === "docx" && available
-                                      ? "Documento organizado por IA para Word."
+                                      ? "Documento revisado para leitura no Word."
                                       : available
                                         ? "Versão derivada publicada."
                                         : "Ainda em processamento."}

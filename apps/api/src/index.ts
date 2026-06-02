@@ -5297,7 +5297,7 @@ async function registerRoutes() {
                 jobId: job.id,
                 variant: query.variant
               },
-              "Could not organize DOCX transcript with AI; exporting faithful transcript only."
+              "Could not revise DOCX transcript with AI; exporting faithful transcript only."
             );
           }
 

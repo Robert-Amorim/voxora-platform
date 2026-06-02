@@ -7,9 +7,10 @@ export type TranscriptOrganizationSegment = {
 };
 
 export type OrganizedTranscriptDocument = {
-  title: string | null;
-  sections: Array<{
-    heading: string;
+  paragraphs: Array<{
+    speakerLabel: string | null;
+    startSec: number | null;
+    endSec: number | null;
     body: string;
   }>;
 };
@@ -39,10 +40,15 @@ function formatSeconds(seconds: number | null) {
   return `${hh}:${mm}:${ss}`;
 }
 
-function segmentToLine(segment: TranscriptOrganizationSegment) {
-  const speaker = segment.speakerLabel ? `${segment.speakerLabel} ` : "";
-  const range = `${formatSeconds(segment.startSec)}-${formatSeconds(segment.endSec)}`;
-  return `[${range}] ${speaker}${segment.text.trim()}`.trim();
+function segmentToPayload(segment: TranscriptOrganizationSegment) {
+  return {
+    segmentIndex: segment.segmentIndex,
+    speakerLabel: segment.speakerLabel ?? null,
+    startSec: segment.startSec,
+    endSec: segment.endSec,
+    timeRange: `${formatSeconds(segment.startSec)}-${formatSeconds(segment.endSec)}`,
+    text: segment.text.trim()
+  };
 }
 
 function splitIntoBatches(segments: TranscriptOrganizationSegment[]) {
@@ -51,7 +57,7 @@ function splitIntoBatches(segments: TranscriptOrganizationSegment[]) {
   let currentChars = 0;
 
   for (const segment of segments) {
-    const lineLength = segmentToLine(segment).length + 1;
+    const lineLength = segment.text.length + 80;
     if (current.length > 0 && currentChars + lineLength > MAX_BATCH_CHARS) {
       batches.push(current);
       current = [];
@@ -86,25 +92,38 @@ function extractJsonObject(raw: string) {
 
 function normalizeOrganization(payload: unknown) {
   const value = payload as {
-    title?: unknown;
-    sections?: Array<{ heading?: unknown; body?: unknown }>;
+    paragraphs?: Array<{
+      speakerLabel?: unknown;
+      startSec?: unknown;
+      endSec?: unknown;
+      text?: unknown;
+      body?: unknown;
+    }>;
   };
 
-  const sections = Array.isArray(value.sections)
-    ? value.sections
-        .map((section) => ({
-          heading: typeof section.heading === "string" ? section.heading.trim() : "",
-          body: typeof section.body === "string" ? section.body.trim() : ""
+  const paragraphs = Array.isArray(value.paragraphs)
+    ? value.paragraphs
+        .map((paragraph) => ({
+          speakerLabel: typeof paragraph.speakerLabel === "string" && paragraph.speakerLabel.trim().length > 0
+            ? paragraph.speakerLabel.trim()
+            : null,
+          startSec: typeof paragraph.startSec === "number" && Number.isFinite(paragraph.startSec)
+            ? paragraph.startSec
+            : null,
+          endSec: typeof paragraph.endSec === "number" && Number.isFinite(paragraph.endSec)
+            ? paragraph.endSec
+            : null,
+          body:
+            typeof paragraph.body === "string"
+              ? paragraph.body.trim()
+              : typeof paragraph.text === "string"
+                ? paragraph.text.trim()
+                : ""
         }))
-        .filter((section) => section.heading.length > 0 && section.body.length > 0)
+        .filter((paragraph) => paragraph.body.length > 0)
     : [];
 
-  return {
-    title: typeof value.title === "string" && value.title.trim().length > 0
-      ? value.title.trim()
-      : null,
-    sections
-  };
+  return { paragraphs };
 }
 
 async function organizeBatch(options: TranscriptOrganizationOptions, batch: TranscriptOrganizationSegment[]) {
@@ -126,14 +145,22 @@ async function organizeBatch(options: TranscriptOrganizationOptions, batch: Tran
           {
             role: "system",
             content:
-              "Voce organiza transcricoes para documentos DOCX. Preserve todos os fatos, nomes, numeros, datas e a ordem das ideias. Nao invente informacoes, nao resuma de forma que remova conteudo importante e nao altere o sentido. Corrija apenas pontuacao, paragrafos, repeticoes leves e quebras de assunto. Retorne somente JSON no formato {\"title\":string,\"sections\":[{\"heading\":string,\"body\":string}]}."
+              "Voce revisa transcricoes para leitura fiel em DOCX. Nao faca resumo, comentario, analise, conclusao, titulo opinativo ou explicacao. Nao adicione informacoes. Mantenha tudo que foi dito, preserve fatos, nomes, numeros, datas e ordem das ideias. Corrija somente pontuacao, capitalizacao, quebras de paragrafo e organizacao de falas. Remova apenas repeticoes muito leves ou vicios de linguagem quando isso nao alterar o sentido. Retorne somente JSON no formato {\"paragraphs\":[{\"speakerLabel\":string|null,\"startSec\":number|null,\"endSec\":number|null,\"text\":string}]}."
           },
           {
             role: "user",
             content: JSON.stringify({
               variant: options.variantLabel,
               language: options.language,
-              transcript: batch.map(segmentToLine).join("\n")
+              instructions: [
+                "Corrigir pontuacao.",
+                "Quebrar em paragrafos.",
+                "Organizar falas.",
+                "Remover repeticoes muito leves quando nao mudam o sentido.",
+                "Manter tudo que foi dito.",
+                "Nao adicionar conclusoes, titulos opinativos, comentarios ou explicacoes."
+              ],
+              segments: batch.map(segmentToPayload)
             })
           }
         ]
@@ -154,8 +181,8 @@ async function organizeBatch(options: TranscriptOrganizationOptions, batch: Tran
     }
 
     const parsed = normalizeOrganization(JSON.parse(extractJsonObject(content)));
-    if (parsed.sections.length === 0) {
-      throw new Error("OpenAI organization response did not include sections.");
+    if (parsed.paragraphs.length === 0) {
+      throw new Error("OpenAI organization response did not include paragraphs.");
     }
 
     return parsed;
@@ -177,14 +204,7 @@ export async function organizeTranscriptForDocument(
     organizedBatches.push(await organizeBatch(options, batch));
   }
 
-  const singleBatch = organizedBatches.length === 1;
   return {
-    title: organizedBatches[0]?.title ?? null,
-    sections: organizedBatches.flatMap((batch, index) =>
-      batch.sections.map((section) => ({
-        heading: singleBatch ? section.heading : `Parte ${index + 1} - ${section.heading}`,
-        body: section.body
-      }))
-    )
+    paragraphs: organizedBatches.flatMap((batch) => batch.paragraphs)
   };
 }
